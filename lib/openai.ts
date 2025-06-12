@@ -21,27 +21,42 @@ export class OpenAIService {
         messages: [
           {
             role: 'system',
-            content: `You are a financial analyst specializing in private credit markets. 
-            Your task is to analyze and summarize private credit deal announcements.
+            content: `You are a senior financial analyst specializing in private credit and alternative lending markets. 
+            
+            Your task is to analyze multiple search results about private credit deal announcements and create a comprehensive, professional summary.
             
             Please provide:
-            1. A concise, informative title (max 100 characters)
-            2. A structured summary highlighting:
-               - Key deals and transactions
-               - Notable companies and deal sizes
-               - Market trends or significant developments
-               - Important announcements
+            1. A compelling, informative title (max 80 characters) that captures the key themes
+            2. A well-structured summary organized as follows:
+               
+            📈 MAJOR TRANSACTIONS
+            • List significant deals with company names, amounts, and transaction types
+            • Include refinancing, acquisitions, and large credit facilities
             
-            Format your response as JSON with "title" and "summary" fields.
-            Keep the summary professional and focused on the most important information.`
+            🏦 FUND ACTIVITY  
+            • New fund launches, closings, and fundraising milestones
+            • Asset manager announcements and strategy updates
+            
+            💼 MARKET DEVELOPMENTS
+            • Notable partnerships, expansions, or strategic initiatives
+            • Industry trends and significant announcements
+            
+            📊 KEY METRICS
+            • Notable deal sizes and funding amounts
+            • Sector focus areas and geographic activity
+            
+            Use bullet points, include specific company names and amounts when available.
+            If no significant deals are found, provide market context or note limited activity.
+            
+            Format your response as JSON with "title" and "summary" fields.`
           },
           {
             role: 'user',
-            content: `Please analyze and summarize these private credit deal announcements:\n\n${dealContent}`
+            content: `Analyze and summarize these private credit search results from multiple sources:\n\n${dealContent}`
           }
         ],
-        max_tokens: 1000,
-        temperature: 0.3,
+        max_tokens: 1200,
+        temperature: 0.2,
         response_format: { type: "json_object" }
       });
 
@@ -51,19 +66,54 @@ export class OpenAIService {
       }
 
       const parsed = JSON.parse(content);
-      return {
-        title: parsed.title || 'Private Credit Deals Summary',
-        summary: parsed.summary || 'No significant deals found.'
-      };
-    } catch (error) {
-      console.error('Error with OpenAI:', error);
       
-      // Fallback summary if OpenAI fails
+      // Validate and enhance the response
+      let title = parsed.title || 'Private Credit Market Activity';
+      let summary = parsed.summary || 'Limited deal activity detected for this period.';
+      
+      // Ensure title is within length limit
+      if (title.length > 80) {
+        title = title.substring(0, 77) + '...';
+      }
+      
+      // Add metadata footer to summary
+      const timestamp = new Date().toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+      
+      summary += `\n\n📊 Analysis completed ${timestamp} EST using Perplexity AI + OpenAI`;
+      
+      return { title, summary };
+      
+    } catch (error) {
+      console.error('Error with OpenAI summarization:', error);
+      
+      // Enhanced fallback summary
+      const fallbackTitle = 'Private Credit Deals Update';
+      let fallbackSummary = '';
+      
+      if (dealContent && dealContent.length > 200) {
+        // Extract key information from raw content
+        const lines = dealContent.split('\n').filter(line => line.trim().length > 0);
+        const relevantLines = lines.slice(0, 10).join('\n');
+        
+        fallbackSummary = `📋 DEAL ACTIVITY SUMMARY\n\n${relevantLines}`;
+        
+        if (dealContent.length > 1000) {
+          fallbackSummary += '\n\n[Additional details available in raw search results]';
+        }
+      } else {
+        fallbackSummary = `📊 LIMITED ACTIVITY\n\nNo significant private credit deals or announcements detected for this date.\n\nThis could indicate:\n• Weekend or holiday period\n• Light market activity\n• Search timing limitations\n\nCheck back during business days for more comprehensive results.`;
+      }
+      
       return {
-        title: 'Private Credit Deals Summary',
-        summary: dealContent.length > 500 
-          ? dealContent.substring(0, 500) + '...' 
-          : dealContent || 'No deals found for this date.'
+        title: fallbackTitle,
+        summary: fallbackSummary
       };
     }
   }

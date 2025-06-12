@@ -84,14 +84,55 @@ export default function Home() {
         setDeals(data.deals || []);
         // Refresh available dates
         await loadAvailableDates();
+        
+        if (data.deals && data.deals.length > 0) {
+          alert(`✅ Successfully found ${data.deals.length} deal(s) for ${formatDate(selectedDate)}`);
+        } else {
+          alert(`ℹ️ Search completed but no significant deals found for ${formatDate(selectedDate)}. This might be due to:\n• Weekend/holiday period\n• Light market activity\n• Search timing\n\nTry a different date or check back later.`);
+        }
       } else {
-        alert('Failed to fetch deals: ' + (data.error || 'Unknown error'));
+        const errorMsg = data.error || 'Unknown error';
+        if (errorMsg.includes('PERPLEXITY_API_KEY')) {
+          alert('❌ Perplexity API key not configured. Please add PERPLEXITY_API_KEY to your environment variables.');
+        } else if (errorMsg.includes('OPENAI_API_KEY')) {
+          alert('❌ OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.');
+        } else {
+          alert('❌ Failed to fetch deals: ' + errorMsg);
+        }
       }
     } catch (error) {
       console.error('Error fetching deals:', error);
-      alert('Error fetching deals. Please try again.');
+      alert('❌ Network error while fetching deals. Please check your connection and try again.');
     } finally {
       setFetching(false);
+    }
+  };
+
+  const testDebug = async () => {
+    try {
+      const response = await fetch(`/api/debug?date=${selectedDate}`);
+      const data = await response.json();
+      console.log('Debug test results:', data);
+      
+      let message = `🔍 Debug Test Results:\n\n`;
+      message += `API Keys:\n`;
+      message += `• Perplexity: ${data.apiKeys?.perplexity || 'unknown'}\n`;
+      message += `• OpenAI: ${data.apiKeys?.openai || 'unknown'}\n\n`;
+      
+      if (data.error) {
+        message += `❌ Error: ${data.error}\n`;
+      } else {
+        message += `Search Results: ${data.searchResults?.length || 0} characters\n`;
+        message += `Has Content: ${data.searchResults?.hasContent ? 'Yes' : 'No'}\n`;
+        if (data.summary) {
+          message += `Summary Generated: Yes\n`;
+        }
+      }
+      
+      alert(message);
+    } catch (error) {
+      console.error('Debug test failed:', error);
+      alert('❌ Debug test failed. Check console for details.');
     }
   };
 
@@ -128,13 +169,24 @@ export default function Home() {
           </div>
         </div>
 
-        <button
-          onClick={fetchNewDeals}
-          disabled={fetching || !selectedDate}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {fetching ? 'Fetching...' : 'Fetch Latest Deals'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={fetchNewDeals}
+            disabled={fetching || !selectedDate}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {fetching ? 'Searching...' : 'Fetch Latest Deals'}
+          </button>
+          
+          <button
+            onClick={testDebug}
+            disabled={!selectedDate}
+            className="px-3 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            title="Test API connections and search functionality"
+          >
+            🔍 Debug Test
+          </button>
+        </div>
       </div>
 
       {/* Loading State */}
