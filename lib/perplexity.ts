@@ -13,7 +13,7 @@ export class PerplexityService {
   private baseUrl = 'https://api.perplexity.ai/chat/completions';
 
   constructor() {
-    this.apiKey = process.env.PERPLEXITY_API_KEY || '';
+    this.apiKey = (process.env.PERPLEXITY_API_KEY || '').trim();
     if (!this.apiKey) {
       throw new Error('PERPLEXITY_API_KEY environment variable is required');
     }
@@ -28,35 +28,76 @@ export class PerplexityService {
       day: 'numeric' 
     });
 
-    // Multiple search strategies to maximize deal discovery
+    // Multiple comprehensive search strategies to find ALL types of private credit deals
     const searchQueries = [
-      // Primary comprehensive search
-      `Find private credit and direct lending deal announcements from ${formattedDate}. Search financial news sources like PEI News, Preqin, Private Debt Investor, Bloomberg, Reuters, and company press releases for:
-      - New private credit fund launches and first/final closings
-      - Direct lending transactions and refinancing deals
-      - Private credit acquisitions and strategic partnerships
-      - Fundraising announcements from asset managers
-      - Private debt investments and portfolio company financing
-      - Credit facility announcements and term loan signings
-      Include company names, deal amounts, sectors, and sources.`,
+      // Strategy 1: Core Private Credit Deals
+      `Search for private credit deals and announcements from ${formattedDate}. Find news from Bloomberg, Reuters, Private Debt Investor, PEI News, Creditflux, and company press releases about:
+      
+      FUND ACTIVITY:
+      - Private credit fund launches, first close, final close
+      - Direct lending fund raises by Apollo, Blackstone, KKR, Ares, Oaktree, Bain Capital Credit
+      - Middle market lending fund formations
+      - Distressed debt fund launches
+      
+      TRANSACTIONS:
+      - Private credit financing deals
+      - Unitranche lending transactions  
+      - Asset-based lending deals
+      - Equipment financing announcements
+      - Real estate credit transactions
+      - Distressed loan acquisitions
+      - Secondary market credit transactions
+      
+      Include specific company names, deal sizes, borrower names, and lender details.`,
 
-      // Secondary focused search
-      `Search for "${formattedDate}" private credit news including:
-      - "private credit" OR "direct lending" OR "private debt" funding announcements
-      - Asset manager fundraising and portfolio investments
-      - Middle market lending and acquisition financing
-      - Private equity sponsor-backed deals with credit components
-      - Alternative credit and specialty finance transactions
-      Focus on institutional announcements and press releases.`,
+      // Strategy 2: Alternative Credit & Specialty Finance
+      `Find alternative lending and specialty finance deals from ${formattedDate}:
+      
+      ALTERNATIVE CREDIT:
+      - Business development company (BDC) investments
+      - Collateralized loan obligation (CLO) issuances
+      - Private placement transactions
+      - Mezzanine financing deals
+      - Venture debt transactions
+      - Specialty finance company announcements
+      
+      DISTRESSED & SPECIAL SITUATIONS:
+      - Distressed debt investments
+      - NPL (non-performing loan) acquisitions
+      - Restructuring and turnaround financing
+      - DIP (debtor-in-possession) financing
+      - Rescue financing deals
+      - Opportunistic credit investments
+      
+      CORPORATE CREDIT:
+      - Term loan B signings
+      - Leveraged buyout financing
+      - Refinancing transactions
+      - Credit facility amendments
+      - Sponsor-backed deals`,
 
-      // Third search for broader context
-      `Find financial market news from ${formattedDate} related to:
-      - Private capital markets and alternative lending
-      - Non-bank lending and credit investment announcements  
-      - Institutional credit facility signings
-      - Private fund portfolio company transactions
-      - Asset-based lending and structured credit deals
-      Search major financial publications and industry sources.`
+      // Strategy 3: Institutional & Market Activity  
+      `Search for institutional credit market activity from ${formattedDate}:
+      
+      INSTITUTIONAL MOVES:
+      - Insurance company private credit allocations
+      - Pension fund direct lending investments
+      - Endowment alternative credit commitments
+      - Sovereign wealth fund private debt investments
+      
+      MARKET INFRASTRUCTURE:
+      - Credit rating agency actions on private companies
+      - Private credit platform launches
+      - Technology solutions for private lending
+      - Regulatory announcements affecting private credit
+      
+      PEOPLE & PARTNERSHIPS:
+      - Senior hiring at private credit firms
+      - Joint ventures in private lending
+      - Strategic partnerships between lenders
+      - New office openings for credit managers
+      
+      Search sources: Private Equity International, Preqin, S&P Global, Fitch, Moody's, LevFin Insights.`
     ];
 
     let allResults = '';
@@ -120,7 +161,15 @@ export class PerplexityService {
       if (!allResults || allResults.trim().length < 200) {
         // Fallback search with broader terms
         console.log('Executing fallback search...');
-        return await this.executeSearch(`Financial news and deal announcements from ${formattedDate} including private markets, credit facilities, fund launches, acquisitions, and investment transactions. Include any alternative lending, direct lending, or private capital market activities.`);
+        return await this.executeSearch(`Search for ANY financial deals and transactions from ${formattedDate} including:
+        
+        PRIVATE CREDIT: Direct lending, private debt, alternative credit, distressed loans, mezzanine financing, unitranche deals, asset-based lending, equipment financing, venture debt, BDC investments, CLO issuances
+        
+        COMPANIES: Apollo Global, Blackstone Credit, KKR Credit, Ares Management, Oaktree Capital, Bain Capital Credit, Blue Owl Capital, Golub Capital, Monroe Capital, TPG Credit, HPS Investment Partners
+        
+        TRANSACTION TYPES: Fund launches, portfolio investments, refinancing deals, LBO financing, term loan signings, credit facility agreements, NPL acquisitions, restructuring finance, DIP financing
+        
+        Include company names, deal amounts, borrower details, and any private market activity.`);
       }
 
       return allResults;

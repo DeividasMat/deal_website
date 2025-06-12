@@ -50,14 +50,14 @@ export default function Home() {
       const data = await response.json();
       setAvailableDates(data.dates || []);
       
-      // Always set yesterday as default for immediate searching
-      const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
-      setSelectedDate(yesterday);
+      // Set 10 days back as default for better deal discovery (business day)
+      const tenDaysBack = format(subDays(new Date(), 10), 'yyyy-MM-dd');
+      setSelectedDate(tenDaysBack);
     } catch (error) {
       console.error('Error loading dates:', error);
-      // Still set yesterday as default even if API fails
-      const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
-      setSelectedDate(yesterday);
+      // Still set 10 days back as default even if API fails
+      const tenDaysBack = format(subDays(new Date(), 10), 'yyyy-MM-dd');
+      setSelectedDate(tenDaysBack);
     }
   };
 
