@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 60
+    }
+  },
+  "env": {
+    "DATABASE_PATH": "./tmp/database.sqlite"
+  }
+} 
