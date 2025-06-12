@@ -19,11 +19,23 @@ export default function Home() {
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [apiStatus, setApiStatus] = useState<{perplexity: string, openai: string} | null>(null);
 
-  // Load available dates on component mount
+  // Load available dates and check API status on component mount
   useEffect(() => {
     loadAvailableDates();
+    checkApiStatus();
   }, []);
+
+  const checkApiStatus = async () => {
+    try {
+      const response = await fetch('/api/health');
+      const data = await response.json();
+      setApiStatus(data.services);
+    } catch (error) {
+      console.error('Error checking API status:', error);
+    }
+  };
 
   // Load deals when selectedDate changes
   useEffect(() => {
@@ -38,15 +50,14 @@ export default function Home() {
       const data = await response.json();
       setAvailableDates(data.dates || []);
       
-      // Set today's date as default if no dates available
-      if (data.dates && data.dates.length > 0) {
-        setSelectedDate(data.dates[0]);
-      } else {
-        const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
-        setSelectedDate(yesterday);
-      }
+      // Always set yesterday as default for immediate searching
+      const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+      setSelectedDate(yesterday);
     } catch (error) {
       console.error('Error loading dates:', error);
+      // Still set yesterday as default even if API fails
+      const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+      setSelectedDate(yesterday);
     }
   };
 
@@ -84,55 +95,20 @@ export default function Home() {
         setDeals(data.deals || []);
         // Refresh available dates
         await loadAvailableDates();
-        
-        if (data.deals && data.deals.length > 0) {
-          alert(`✅ Successfully found ${data.deals.length} deal(s) for ${formatDate(selectedDate)}`);
-        } else {
-          alert(`ℹ️ Search completed but no significant deals found for ${formatDate(selectedDate)}. This might be due to:\n• Weekend/holiday period\n• Light market activity\n• Search timing\n\nTry a different date or check back later.`);
-        }
       } else {
         const errorMsg = data.error || 'Unknown error';
         if (errorMsg.includes('PERPLEXITY_API_KEY')) {
-          alert('❌ Perplexity API key not configured. Please add PERPLEXITY_API_KEY to your environment variables.');
+          alert('🔑 Missing Perplexity API Key\n\nTo fix this:\n1. Go to https://docs.perplexity.ai/\n2. Get your API key\n3. Add it to Vercel environment variables\n4. Redeploy your app');
         } else if (errorMsg.includes('OPENAI_API_KEY')) {
-          alert('❌ OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.');
+          alert('🔑 Missing OpenAI API Key\n\nTo fix this:\n1. Go to https://platform.openai.com/\n2. Get your API key\n3. Add it to Vercel environment variables\n4. Redeploy your app');
         } else {
-          alert('❌ Failed to fetch deals: ' + errorMsg);
+          console.error('Fetch error:', errorMsg);
         }
       }
     } catch (error) {
-      console.error('Error fetching deals:', error);
-      alert('❌ Network error while fetching deals. Please check your connection and try again.');
+      console.error('Network error:', error);
     } finally {
       setFetching(false);
-    }
-  };
-
-  const testDebug = async () => {
-    try {
-      const response = await fetch(`/api/debug?date=${selectedDate}`);
-      const data = await response.json();
-      console.log('Debug test results:', data);
-      
-      let message = `🔍 Debug Test Results:\n\n`;
-      message += `API Keys:\n`;
-      message += `• Perplexity: ${data.apiKeys?.perplexity || 'unknown'}\n`;
-      message += `• OpenAI: ${data.apiKeys?.openai || 'unknown'}\n\n`;
-      
-      if (data.error) {
-        message += `❌ Error: ${data.error}\n`;
-      } else {
-        message += `Search Results: ${data.searchResults?.length || 0} characters\n`;
-        message += `Has Content: ${data.searchResults?.hasContent ? 'Yes' : 'No'}\n`;
-        if (data.summary) {
-          message += `Summary Generated: Yes\n`;
-        }
-      }
-      
-      alert(message);
-    } catch (error) {
-      console.error('Debug test failed:', error);
-      alert('❌ Debug test failed. Check console for details.');
     }
   };
 
@@ -146,6 +122,43 @@ export default function Home() {
 
   return (
     <div className="space-y-6">
+      {/* API Configuration Warning */}
+      {(apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing') && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <span className="text-2xl">⚠️</span>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-lg font-medium text-yellow-800">
+                API Configuration Required
+              </h3>
+                             <div className="mt-2 text-sm text-yellow-700">
+                 {apiStatus?.perplexity === 'missing' && (
+                   <p className="mb-2">
+                     🔑 <strong>Missing Perplexity API key</strong> - Get one at{' '}
+                     <a href="https://docs.perplexity.ai/" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                       docs.perplexity.ai
+                     </a>
+                   </p>
+                 )}
+                 {apiStatus?.openai === 'missing' && (
+                   <p className="mb-2">
+                     🔑 <strong>Missing OpenAI API key</strong> - Get one at{' '}
+                     <a href="https://platform.openai.com/" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                       platform.openai.com
+                     </a>
+                   </p>
+                 )}
+                <p className="text-xs mt-2">
+                  Add these to your Vercel environment variables and redeploy to start finding deals.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Controls */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
@@ -169,62 +182,65 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={fetchNewDeals}
-            disabled={fetching || !selectedDate}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {fetching ? 'Searching...' : 'Fetch Latest Deals'}
-          </button>
-          
-          <button
-            onClick={testDebug}
-            disabled={!selectedDate}
-            className="px-3 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-            title="Test API connections and search functionality"
-          >
-            🔍 Debug Test
-          </button>
-        </div>
+        <button
+          onClick={fetchNewDeals}
+          disabled={fetching || !selectedDate || (apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing')}
+          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed text-lg font-medium"
+        >
+          {fetching ? '🔍 Searching for Deals...' : 
+           (apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing') ? 
+           '🔑 Configure API Keys First' : 
+           '🚀 Find Private Credit Deals'}
+        </button>
       </div>
 
-      {/* Loading State */}
-      {loading && (
-        <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="mt-2 text-gray-600">Loading deals...</p>
+      {/* Loading/Fetching State */}
+      {(loading || fetching) && (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600"></div>
+          <p className="mt-4 text-lg text-gray-700">
+            {fetching ? 'Searching for private credit deals...' : 'Loading deals...'}
+          </p>
+          {fetching && (
+            <p className="mt-2 text-sm text-gray-500">
+              Using Perplexity AI to find the latest announcements
+            </p>
+          )}
         </div>
       )}
 
       {/* Deals Display */}
-      {!loading && selectedDate && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-gray-900">
+      {!loading && !fetching && selectedDate && (
+        <div className="space-y-6">
+          <h2 className="text-2xl font-semibold text-gray-900">
             Private Credit Deals for {formatDate(selectedDate)}
           </h2>
 
           {deals.length === 0 ? (
-            <div className="text-center py-8 bg-white rounded-lg shadow">
-              <p className="text-gray-500">No deals found for this date.</p>
-              <p className="text-sm text-gray-400 mt-1">
-                Try fetching the latest deals or select a different date.
+            <div className="text-center py-12 bg-white rounded-lg shadow">
+              <div className="text-6xl mb-4">🔍</div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Ready to Find Deals</h3>
+              <p className="text-gray-500 mb-4">
+                Click "Find Private Credit Deals" to search for the latest announcements
+              </p>
+              <p className="text-sm text-gray-400">
+                The system will search multiple sources including Bloomberg, Reuters, PEI News, and industry publications
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {deals.map((deal) => (
-                <div key={deal.id} className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                <div key={deal.id} className="bg-white rounded-lg shadow-md p-6 border-l-4 border-blue-500">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-3">
                     {deal.title}
                   </h3>
-                  <div className="text-gray-600 whitespace-pre-wrap mb-4">
+                  <div className="text-gray-700 whitespace-pre-wrap mb-4 leading-relaxed">
                     {deal.summary}
                   </div>
-                  <div className="flex justify-between items-center text-sm text-gray-500">
-                    <span>Source: {deal.source}</span>
+                  <div className="flex justify-between items-center text-sm text-gray-500 pt-3 border-t">
+                    <span className="font-medium">Source: {deal.source}</span>
                     <span>
-                      Updated: {format(new Date(deal.created_at), 'h:mm a')}
+                      Updated: {format(new Date(deal.created_at), 'MMM d, h:mm a')}
                     </span>
                   </div>
                 </div>
