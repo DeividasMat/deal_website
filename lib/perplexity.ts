@@ -13,10 +13,13 @@ export class PerplexityService {
   private baseUrl = 'https://api.perplexity.ai/chat/completions';
 
   constructor() {
-    this.apiKey = (process.env.PERPLEXITY_API_KEY || '').trim();
+    const rawKey = process.env.PERPLEXITY_API_KEY || '';
+    // Clean the API key more aggressively - remove all non-printable characters
+    this.apiKey = rawKey.replace(/[^\x20-\x7E]/g, '').trim();
     if (!this.apiKey) {
       throw new Error('PERPLEXITY_API_KEY environment variable is required');
     }
+    console.log(`Perplexity API key loaded: ${this.apiKey.substring(0, 8)}...`);
   }
 
   async searchPrivateCreditDeals(date: string): Promise<string> {
@@ -39,16 +42,24 @@ export class PerplexityService {
       - Middle market lending fund formations
       - Distressed debt fund launches
       
-      TRANSACTIONS:
-      - Private credit financing deals
+      TRANSACTIONS & CREDIT FACILITIES:
+      - ABL (Asset-Based Lending) credit facilities like "Percent Provides $1.5MM ABL Credit Facility"
+      - SMB (Small/Medium Business) lending deals
+      - Private credit financing deals to specific companies
       - Unitranche lending transactions  
-      - Asset-based lending deals
       - Equipment financing announcements
       - Real estate credit transactions
       - Distressed loan acquisitions
       - Secondary market credit transactions
+      - Working capital facilities
+      - Factoring and invoice financing deals
       
-      Include specific company names, deal sizes, borrower names, and lender details.`,
+      ALTERNATIVE LENDERS:
+      - Percent, Fundbox, BlueVine, OnDeck, Kabbage, Square Capital
+      - Fintech lending platforms and credit facilities
+      - Non-bank lenders providing credit facilities
+      
+      Include specific company names, deal sizes, borrower names, lender details, and facility amounts.`,
 
       // Strategy 2: Alternative Credit & Specialty Finance
       `Find alternative lending and specialty finance deals from ${formattedDate}:
@@ -161,15 +172,19 @@ export class PerplexityService {
       if (!allResults || allResults.trim().length < 200) {
         // Fallback search with broader terms
         console.log('Executing fallback search...');
-        return await this.executeSearch(`Search for ANY financial deals and transactions from ${formattedDate} including:
+        return await this.executeSearch(`Search for ANY credit deals, lending transactions, and financial announcements from ${formattedDate} including:
         
-        PRIVATE CREDIT: Direct lending, private debt, alternative credit, distressed loans, mezzanine financing, unitranche deals, asset-based lending, equipment financing, venture debt, BDC investments, CLO issuances
+        PRIVATE CREDIT & LENDING: Direct lending, private debt, alternative credit, distressed loans, mezzanine financing, unitranche deals, asset-based lending (ABL), equipment financing, venture debt, BDC investments, CLO issuances
         
-        COMPANIES: Apollo Global, Blackstone Credit, KKR Credit, Ares Management, Oaktree Capital, Bain Capital Credit, Blue Owl Capital, Golub Capital, Monroe Capital, TPG Credit, HPS Investment Partners
+        CREDIT FACILITIES & ANNOUNCEMENTS: Like "Percent Provides $1.5MM ABL Credit Facility to SMB Lender" - search for similar deal announcements with specific amounts, lender names, borrower types
         
-        TRANSACTION TYPES: Fund launches, portfolio investments, refinancing deals, LBO financing, term loan signings, credit facility agreements, NPL acquisitions, restructuring finance, DIP financing
+        FINTECH & ALTERNATIVE LENDERS: Percent, Fundbox, BlueVine, OnDeck, Kabbage, Square Capital, PayPal Working Capital, Amazon Lending, and other non-bank credit providers
         
-        Include company names, deal amounts, borrower details, and any private market activity.`);
+        TRADITIONAL PRIVATE CREDIT: Apollo Global, Blackstone Credit, KKR Credit, Ares Management, Oaktree Capital, Bain Capital Credit, Blue Owl Capital, Golub Capital, Monroe Capital, TPG Credit, HPS Investment Partners
+        
+        TRANSACTION TYPES: Fund launches, portfolio investments, refinancing deals, LBO financing, term loan signings, credit facility agreements, NPL acquisitions, restructuring finance, DIP financing, working capital facilities, factoring deals
+        
+        Search press releases, company announcements, industry publications, and financial news sources. Include company names, deal amounts, borrower details, and any private market activity.`);
       }
 
       return allResults;
