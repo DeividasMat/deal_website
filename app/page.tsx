@@ -22,7 +22,7 @@ export default function Home() {
   const [selectedDateRange, setSelectedDateRange] = useState<string>('all');
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
-  const [apiStatus, setApiStatus] = useState<{perplexity: string, openai: string} | null>(null);
+  const [apiStatus, setApiStatus] = useState<{perplexity: string, openai: string, supabase: string} | null>(null);
 
   // Load all deals and check API status on component mount
   useEffect(() => {
@@ -207,7 +207,7 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
         {/* API Configuration Warning */}
-        {(apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing') && (
+        {(apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing' || apiStatus?.supabase === 'missing') && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-6">
             <div className="flex">
               <div className="flex-shrink-0">
@@ -215,9 +215,18 @@ export default function Home() {
               </div>
               <div className="ml-4">
                 <h3 className="text-lg font-semibold text-amber-800 mb-2">
-                  API Configuration Required
+                  Configuration Required
                 </h3>
                 <div className="text-sm text-amber-700 space-y-2">
+                  {apiStatus?.supabase === 'missing' && (
+                    <p>
+                      🗄️ <strong>Missing Supabase configuration</strong> - Set up your database at{' '}
+                      <a href="https://app.supabase.com/" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                        app.supabase.com
+                      </a>
+                      {' '}and see SUPABASE_SETUP.md for instructions
+                    </p>
+                  )}
                   {apiStatus?.perplexity === 'missing' && (
                     <p>
                       🔑 <strong>Missing Perplexity API key</strong> - Get one at{' '}
@@ -276,7 +285,7 @@ export default function Home() {
 
           <button
             onClick={fetchNewDeals}
-            disabled={fetching || (apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing')}
+            disabled={fetching || (apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing' || apiStatus?.supabase === 'missing')}
             className="px-8 py-3 bg-slate-800 text-white rounded-md hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
           >
             {fetching ? 
@@ -284,8 +293,8 @@ export default function Home() {
                selectedDateRange === 'today' ? 'Fetching Today News...' :
                selectedDateRange === 'yesterday' ? 'Fetching Yesterday News...' :
                'Searching for News...') : 
-             (apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing') ? 
-             'Configure API Keys First' : 
+             (apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing' || apiStatus?.supabase === 'missing') ? 
+             'Configure Services First' : 
              (selectedDateRange === 'week' ? 'Fetch This Week' :
               selectedDateRange === 'today' ? 'Fetch Today' :
               selectedDateRange === 'yesterday' ? 'Fetch Yesterday' :
