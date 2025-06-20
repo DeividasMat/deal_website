@@ -289,6 +289,21 @@ $$ LANGUAGE plpgsql;
 
     return data?.length || 0;
   }
+
+  async deleteDeal(dealId: number): Promise<boolean> {
+    await this.ensureInitialized();
+    
+    const { error } = await this.supabase
+      .from('deals')
+      .delete()
+      .eq('id', dealId);
+
+    if (error) {
+      throw new Error(`Failed to delete deal: ${error.message}`);
+    }
+
+    return true;
+  }
 }
 
 let dbInstance: SupabaseDatabase | null = null;

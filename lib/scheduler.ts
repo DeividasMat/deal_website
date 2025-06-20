@@ -251,15 +251,14 @@ export class DealScheduler {
   startScheduler(): void {
     // Run every day at 12:00 PM for the previous day
     cron.schedule('0 12 * * *', async () => {
-      const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
-      console.log(`Scheduled task: Fetching daily news for ${yesterday}...`);
-      await this.fetchAndProcessDeals(yesterday);
+      console.log(`🕐 Scheduled task starting at 12:00 PM EST...`);
+      await this.scheduleDailyNews();
     }, {
       scheduled: true,
       timezone: "America/New_York"
     });
 
-    console.log('News scheduler started - will run daily at 12:00 PM EST for previous day');
+    console.log('News scheduler started - will run daily at 12:00 PM EST for previous day with duplicate removal');
   }
 
   stopScheduler(): void {
@@ -270,6 +269,105 @@ export class DealScheduler {
   async runManualFetch(date?: string): Promise<void> {
     console.log('Running manual news fetch...');
     await this.fetchAndProcessDeals(date);
+  }
+
+  async runDuplicateCleanup(): Promise<number> {
+    console.log('🧹 Running manual duplicate cleanup...');
+    return await this.removeDuplicates();
+  }
+
+  async scheduleDailyNews(): Promise<void> {
+    console.log('🕐 Starting daily news collection...');
+    
+    try {
+      // Get yesterday's date for news collection
+      const yesterday = subDays(new Date(), 1);
+      const dateStr = format(yesterday, 'yyyy-MM-dd');
+      
+      console.log(`📅 Collecting news for: ${dateStr}`);
+      
+      // Fetch news for yesterday using existing method
+      await this.fetchAndProcessDeals(dateStr);
+      
+      // Clean up duplicates after fetching
+      console.log('🧹 Cleaning up duplicate articles...');
+      const duplicatesRemoved = await this.removeDuplicates();
+      console.log(`🗑️ Removed ${duplicatesRemoved} duplicate articles`);
+      
+      // Get final count
+      const db = getDatabase();
+      const allDeals = await db.getAllDeals();
+      console.log(`📊 Total articles in database: ${allDeals.length}`);
+      
+    } catch (error) {
+      console.error('❌ Error in daily news collection:', error);
+    }
+  }
+
+  private async removeDuplicates(): Promise<number> {
+    try {
+      // Get all articles using the database service
+      const db = getDatabase();
+      const allArticles = await db.getAllDeals();
+      
+      // Group articles by similarity
+      const duplicateGroups: { [key: string]: any[] } = {};
+      
+      for (const article of allArticles) {
+        // Create a similarity key based on title and content
+        const titleWords = article.title.toLowerCase()
+          .replace(/[^\w\s]/g, '')
+          .split(/\s+/)
+          .filter((word: string) => word.length > 3)
+          .sort()
+          .slice(0, 5) // Take first 5 significant words
+          .join(' ');
+        
+        const contentWords = article.summary.toLowerCase()
+          .replace(/[^\w\s]/g, '')
+          .split(/\s+/)
+          .filter((word: string) => word.length > 3)
+          .slice(0, 10) // Take first 10 significant words
+          .join(' ');
+        
+        const similarityKey = `${titleWords}|${contentWords}`;
+        
+        if (!duplicateGroups[similarityKey]) {
+          duplicateGroups[similarityKey] = [];
+        }
+        duplicateGroups[similarityKey].push(article);
+      }
+      
+      // Find and remove duplicates (keep the one with most upvotes or newest)
+      let duplicatesRemoved = 0;
+      
+      for (const group of Object.values(duplicateGroups)) {
+        if (group.length > 1) {
+          // Sort by upvotes (desc) then by creation date (desc)
+          group.sort((a, b) => {
+            if (b.upvotes !== a.upvotes) {
+              return (b.upvotes || 0) - (a.upvotes || 0);
+            }
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          });
+          
+          // Keep the first one, remove the rest
+          const toRemove = group.slice(1);
+          
+          for (const duplicate of toRemove) {
+            await db.deleteDeal(duplicate.id);
+            duplicatesRemoved++;
+            console.log(`🗑️ Removed duplicate: "${duplicate.title.substring(0, 50)}..."`);
+          }
+        }
+      }
+      
+      return duplicatesRemoved;
+      
+    } catch (error) {
+      console.error('Error removing duplicates:', error);
+      return 0;
+    }
   }
 }
 
