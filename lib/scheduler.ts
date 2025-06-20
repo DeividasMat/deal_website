@@ -68,51 +68,18 @@ export class DealScheduler {
       for (const section of sections) {
         console.log(`Processing section: "${section.category}" (${section.content.length} chars)`);
 
-        // Skip sections that are primarily "no news found" content
-        const skipPhrases = [
-          'no news found',
-          'no specific',
-          'after a thorough review',
-          'however, here are some',
-          'no announcements',
-          'were not found',
-          'conclusion:',
-          'key findings:',
-          'no real, specific'
-        ];
-        
-        const hasSkipContent = skipPhrases.some(phrase => 
-          section.content.toLowerCase().includes(phrase)
-        );
-        
-        // Check if section has actual financial content
-        const hasFinancialContent = 
-          section.content.includes('$') || 
-          section.content.includes('€') || 
-          section.content.includes('£') ||
-          section.content.includes('million') ||
-          section.content.includes('billion') ||
-          (section.content.toLowerCase().includes('fund') && section.content.toLowerCase().includes('raises')) ||
-          (section.content.toLowerCase().includes('credit') && section.content.toLowerCase().includes('facility')) ||
-          section.content.toLowerCase().includes('announces') ||
-          section.content.toLowerCase().includes('secures') ||
-          section.content.toLowerCase().includes('closes');
+        // Only skip sections that are clearly "no news found" disclaimers
+        const isDisclaimerSection = 
+          section.content.toLowerCase().includes('no news found') &&
+          section.content.toLowerCase().includes('thorough review') &&
+          section.content.length < 300;
 
-        // Also check for company names to ensure it's about real deals
-        const hasCompanyNames = /[A-Z][A-Za-z\s&]+(Inc\.|Corp\.|LLC|Ltd\.|Capital|Group|Holdings|Partners)/i.test(section.content);
-
-        if (hasSkipContent && !hasFinancialContent) {
-          console.log(`⚠️ Skipping section with "no news found" content: "${section.category}"`);
+        if (isDisclaimerSection) {
+          console.log(`⚠️ Skipping disclaimer section: "${section.category}"`);
           continue;
         }
 
-        // Skip sections without meaningful financial content
-        if (!hasFinancialContent || (!hasCompanyNames && section.content.length < 500)) {
-          console.log(`⚠️ Skipping section without sufficient financial content: "${section.category}"`);
-          continue;
-        }
-
-        if (section.content && section.content.length > 100) {
+        if (section.content && section.content.length > 50) {
           try {
             // Extract individual articles using OpenAI
             console.log(`Sending to OpenAI for extraction: ${section.content.substring(0, 200)}...`);
@@ -120,40 +87,34 @@ export class DealScheduler {
             
             console.log(`Found ${articles.length} articles in ${section.category} section:`, articles.map((a: any) => a.title));
             
-            // Save each article separately with improved duplicate detection
+            // Save each article with basic duplicate detection
             for (const article of articles) {
               try {
-                // Validate article before saving
+                // Basic validation - just check if we have title and summary
                 const isValidArticle = 
                   article.title && 
-                  article.title.trim().length > 10 &&
-                  !article.title.toLowerCase().includes('news update') &&
-                  !article.title.toLowerCase().includes('update 1') &&
-                  !article.title.toLowerCase().includes('update 2') &&
+                  article.title.trim().length > 5 &&
                   article.summary && 
-                  article.summary.trim().length > 30 &&
-                  !article.summary.toLowerCase().includes('no summary available') &&
-                  (article.summary.includes('$') || 
-                   article.summary.includes('€') || 
-                   article.summary.includes('£') ||
-                   article.summary.includes('million') ||
-                   article.summary.includes('billion') ||
-                   article.summary.toLowerCase().includes('facility') ||
-                   article.summary.toLowerCase().includes('credit') ||
-                   article.summary.toLowerCase().includes('fund') ||
-                   article.summary.toLowerCase().includes('investment'));
+                  article.summary.trim().length > 10;
 
                 if (!isValidArticle) {
                   console.log(`⚠️ Skipping invalid article: "${article.title}"`);
                   continue;
                 }
 
-                // More precise duplicate detection - check exact title matches only
-                const exactDuplicate = existingDeals.some(existing => 
-                  existing.title.toLowerCase().trim() === article.title.toLowerCase().trim()
-                );
+                // Simple duplicate detection - check title similarity
+                const isDuplicate = existingDeals.some(existing => {
+                  const existingTitle = existing.title.toLowerCase().trim();
+                  const newTitle = article.title.toLowerCase().trim();
+                  
+                  // Check exact match or very similar titles
+                  return existingTitle === newTitle || 
+                         (existingTitle.length > 10 && newTitle.length > 10 && 
+                          existingTitle.includes(newTitle.substring(0, 15)) ||
+                          newTitle.includes(existingTitle.substring(0, 15)));
+                });
                 
-                if (!exactDuplicate) {
+                if (!isDuplicate) {
                   console.log(`Saving article: "${article.title}"`);
                   await db.saveDeal({
                     date,
@@ -162,12 +123,12 @@ export class DealScheduler {
                     content: section.content, // Keep section content for reference
                     source: 'Perplexity + OpenAI',
                     source_url: article.source_url,
-                    category: article.category
+                    category: article.category || 'Deal Activity'
                   });
                   totalArticlesSaved++;
                   console.log(`✅ Saved article: "${article.title}"`);
                 } else {
-                  console.log(`⚠️ Skipping exact duplicate article: "${article.title}"`);
+                  console.log(`⚠️ Skipping duplicate article: "${article.title}"`);
                 }
               } catch (saveError) {
                 console.error(`❌ Error saving article "${article.title}":`, saveError);
@@ -176,41 +137,39 @@ export class DealScheduler {
           } catch (extractError) {
             console.error(`❌ Error extracting articles from ${section.category}:`, extractError);
             
-            // Only use fallback if the section has actual financial content
-            if (hasFinancialContent) {
-              console.log(`Using fallback summary for ${section.category}`);
-              try {
-                const fallbackSummary = await this.getOpenAIService().summarizeDeals(section.content);
-                
-                // Check if fallback summary is duplicate
-                const exactDuplicate = existingDeals.some(existing => 
-                  existing.title.toLowerCase().trim() === fallbackSummary.title.toLowerCase().trim()
-                );
-                
-                if (!exactDuplicate) {
-                  await db.saveDeal({
-                    date,
-                    title: fallbackSummary.title,
-                    summary: fallbackSummary.summary,
-                    content: section.content,
-                    source: 'Perplexity + OpenAI',
-                    source_url: fallbackSummary.source_url,
-                    category: fallbackSummary.category
-                  });
-                  totalArticlesSaved++;
-                  console.log(`✅ Saved fallback summary: "${fallbackSummary.title}"`);
-                } else {
-                  console.log(`⚠️ Skipping duplicate fallback summary: "${fallbackSummary.title}"`);
-                }
-              } catch (fallbackError) {
-                console.error(`❌ Error saving fallback summary:`, fallbackError);
+            // Use fallback for any section that has content
+            console.log(`Using fallback summary for ${section.category}`);
+            try {
+              const fallbackSummary = await this.getOpenAIService().summarizeDeals(section.content);
+              
+              // Check if fallback summary is duplicate
+              const isDuplicate = existingDeals.some(existing => {
+                const existingTitle = existing.title.toLowerCase().trim();
+                const newTitle = fallbackSummary.title.toLowerCase().trim();
+                return existingTitle === newTitle;
+              });
+              
+              if (!isDuplicate) {
+                await db.saveDeal({
+                  date,
+                  title: fallbackSummary.title,
+                  summary: fallbackSummary.summary,
+                  content: section.content,
+                  source: 'Perplexity + OpenAI',
+                  source_url: fallbackSummary.source_url,
+                  category: fallbackSummary.category || 'Deal Activity'
+                });
+                totalArticlesSaved++;
+                console.log(`✅ Saved fallback summary: "${fallbackSummary.title}"`);
+              } else {
+                console.log(`⚠️ Skipping duplicate fallback summary: "${fallbackSummary.title}"`);
               }
-            } else {
-              console.log(`⚠️ Skipping fallback for section without financial content`);
+            } catch (fallbackError) {
+              console.error(`❌ Error saving fallback summary:`, fallbackError);
             }
           }
         } else {
-          console.log(`⚠️ Skipping section - Category: "${section.category}", Content length: ${section.content?.length || 0}`);
+          console.log(`⚠️ Skipping section - too short: "${section.category}" (${section.content?.length || 0} chars)`);
         }
       }
 

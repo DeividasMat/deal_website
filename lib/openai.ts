@@ -97,59 +97,16 @@ export class OpenAIService {
         const title = article.title?.toLowerCase() || '';
         const summary = article.summary?.toLowerCase() || '';
         
-        // Skip articles with unwanted content
-        const skipPhrases = [
-          'no news found',
-          'no specific',
-          'after a thorough review',
-          'however, here are some',
-          'key findings',
-          'conclusion:',
-          'based on available sources',
-          'strict adherence to',
-          'were not found',
-          'no announcements'
-        ];
-        
-        // Skip placeholder titles and empty content
+        // Only skip obvious placeholder/empty content
         const isPlaceholder = 
-          title.includes('news update') ||
-          title.includes('update 1') ||
-          title.includes('update 2') ||
-          title.includes('update 3') ||
+          title.includes('news update') && title.length < 20 ||
           summary.includes('no summary available') ||
-          summary.includes('no content') ||
-          summary.trim().length < 20 ||
-          title.trim().length < 10;
+          summary.includes('no content available') ||
+          summary.trim().length < 10 ||
+          title.trim().length < 5;
         
-        const shouldSkip = skipPhrases.some(phrase => 
-          title.includes(phrase) || summary.includes(phrase)
-        ) || isPlaceholder;
-        
-        if (shouldSkip) {
-          console.log(`🚫 Skipping invalid content: "${article.title}"`);
-          return false;
-        }
-        
-        // Only keep articles with actual financial content
-        const hasFinancialContent = 
-          summary.includes('$') || 
-          summary.includes('€') || 
-          summary.includes('£') ||
-          summary.includes('million') ||
-          summary.includes('billion') ||
-          title.includes('$') ||
-          title.includes('€') ||
-          title.includes('£') ||
-          summary.toLowerCase().includes('facility') ||
-          summary.toLowerCase().includes('credit') ||
-          summary.toLowerCase().includes('loan') ||
-          summary.toLowerCase().includes('fund') ||
-          summary.toLowerCase().includes('investment') ||
-          summary.toLowerCase().includes('financing');
-        
-        if (!hasFinancialContent) {
-          console.log(`🚫 Skipping non-financial content: "${article.title}"`);
+        if (isPlaceholder) {
+          console.log(`🚫 Skipping placeholder content: "${article.title}"`);
           return false;
         }
         
@@ -190,73 +147,55 @@ export class OpenAIService {
   private createFallbackArticles(newsContent: string, category: string): NewsAnalysis[] {
     const fallbackArticles: NewsAnalysis[] = [];
     
-    // Look for actual deals in bullet points
-    const bulletPoints = newsContent.split(/•\s+/).filter(point => point.trim().length > 50);
+    // Look for actual content in bullet points or paragraphs
+    const bulletPoints = newsContent.split(/•\s+/).filter(point => point.trim().length > 30);
     
     for (const point of bulletPoints) {
-      // Skip unwanted content
-      const skipPhrases = [
-        'no news found',
-        'no specific',
-        'after a thorough review',
-        'however, here are some',
-        'key findings',
-        'conclusion:',
-        'based on available sources'
-      ];
+      // Skip only obvious disclaimers
+      const isDisclaimer = 
+        point.toLowerCase().includes('no news found') &&
+        point.toLowerCase().includes('thorough review') &&
+        point.length < 200;
       
-      const shouldSkip = skipPhrases.some(phrase => 
-        point.toLowerCase().includes(phrase)
-      );
+      if (isDisclaimer) continue;
       
-      if (shouldSkip) continue;
-      
-      // Only include points with clear financial content AND company names
-      const hasAmount = point.includes('$') || point.includes('€') || point.includes('£') ||
-                       point.includes('million') || point.includes('billion');
-      
-      const hasFinancialTerms = 
-        point.toLowerCase().includes('credit') && point.toLowerCase().includes('facility') ||
-        point.toLowerCase().includes('fund') && point.toLowerCase().includes('raises') ||
+      // Look for any content with company names or financial terms
+      const hasContent = 
+        point.includes('$') || point.includes('€') || point.includes('£') ||
+        point.includes('million') || point.includes('billion') ||
+        point.toLowerCase().includes('credit') ||
+        point.toLowerCase().includes('fund') ||
         point.toLowerCase().includes('loan') ||
         point.toLowerCase().includes('financing') ||
-        point.toLowerCase().includes('investment');
+        point.toLowerCase().includes('investment') ||
+        /[A-Z][A-Za-z\s&]+(Inc\.|Corp\.|LLC|Ltd\.|Capital|Group|Holdings|Partners)/i.test(point);
       
-      const hasCompanyName = /[A-Z][A-Za-z\s&]+(Inc\.|Corp\.|LLC|Ltd\.|Capital|Group|Holdings|Partners)/i.test(point);
-      
-      // Only create article if it has amount AND (financial terms OR company name)
-      if (hasAmount && (hasFinancialTerms || hasCompanyName)) {
-        // Extract company name
-        const companyMatch = point.match(/^([A-Z][A-Za-z\s&]+?)(?:\s+(?:announces|secures|closes|provides|raises|amends))/);
+      if (hasContent) {
+        // Extract company name or create generic title
+        const companyMatch = point.match(/([A-Z][A-Za-z\s&]+?)(?:\s+(?:announces|secures|closes|provides|raises|amends|completed))/);
         const company = companyMatch ? companyMatch[1].trim() : '';
         
-        if (company && company.length > 2) {
-          // Extract amount if present
-          const amountMatch = point.match(/[\$€£][\d,.]+(?: million| billion|M|B)?/i);
-          const amount = amountMatch ? amountMatch[0] : '';
+        const title = company && company.length > 2 ? 
+          `${company} Financial Update` : 
+          `Market Activity Update`;
+        
+        // Use the content as summary, cleaned up
+        const cleanSummary = point.substring(0, 200).trim();
+        if (cleanSummary.length > 20) {
+          fallbackArticles.push({
+            title: title.substring(0, 60),
+            summary: cleanSummary + (point.length > 200 ? '...' : ''),
+            category: 'Deal Activity',
+            source_url: undefined
+          });
           
-          const title = amount ? 
-            `${company} ${amount} Transaction` : 
-            `${company} Deal Update`;
-          
-          // Ensure summary is meaningful and not too short
-          const cleanSummary = point.substring(0, 250).trim();
-          if (cleanSummary.length > 30) {
-            fallbackArticles.push({
-              title: title.substring(0, 60),
-              summary: cleanSummary + (point.length > 250 ? '...' : ''),
-              category: 'Deal Activity',
-              source_url: undefined
-            });
-            
-            // Limit to avoid too many fallback articles
-            if (fallbackArticles.length >= 3) break;
-          }
+          // Limit to avoid too many fallback articles
+          if (fallbackArticles.length >= 5) break;
         }
       }
     }
     
-    console.log(`🤖 Created ${fallbackArticles.length} validated fallback articles`);
+    console.log(`🤖 Created ${fallbackArticles.length} fallback articles`);
     return fallbackArticles;
   }
 

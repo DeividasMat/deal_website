@@ -276,10 +276,11 @@ $$ LANGUAGE plpgsql;
   async cleanupInvalidArticles(): Promise<number> {
     await this.ensureInitialized();
     
+    // Only remove obvious placeholder content
     const { data, error } = await this.supabase
       .from('deals')
       .delete()
-      .or(`title.ilike.%News Update%,title.ilike.%Update 1%,title.ilike.%Update 2%,title.ilike.%Update 3%,summary.ilike.%No summary available%,summary.ilike.%No content%`)
+      .or(`title.ilike.%News Update%,summary.ilike.%No summary available%`)
       .select('id');
 
     if (error) {
