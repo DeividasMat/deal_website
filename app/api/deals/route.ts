@@ -76,6 +76,15 @@ export async function POST(request: NextRequest) {
         message: `Cleaned up ${deletedCount} invalid articles`,
         deletedCount: deletedCount
       });
+    } else if (action === 'manual_cleanup') {
+      const scheduler = getScheduler();
+      const deletedCount = await scheduler.runDuplicateCleanup();
+      
+      return NextResponse.json({ 
+        success: true, 
+        message: `Removed ${deletedCount} duplicate articles`,
+        deletedCount: deletedCount
+      });
     } else if (action === 'fetch') {
       const scheduler = getScheduler();
       
