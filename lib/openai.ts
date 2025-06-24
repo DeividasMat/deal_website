@@ -62,19 +62,21 @@ export class OpenAIService {
 
             FORMAT REQUIREMENTS:
             - Title: Clean company name + deal type (max 60 characters)
-            - Summary: EXACTLY 2 sentences, maximum 100 words, professional tone
-            - Focus on: WHO did WHAT for HOW MUCH and WHY
+            - Summary: EXACTLY 2 complete, informative sentences that capture all key details including specific amounts, parties, transaction structure, and purpose/strategic rationale
+            - Focus on: WHO did WHAT for HOW MUCH and WHY in precise, Bloomberg-style language
             - Extract actual URLs (https://...) when mentioned in content
 
-            SUMMARY STYLE:
-            ✅ "Apollo Global Management provided a $500M credit facility to TechCorp for expansion financing. The facility includes both revolving credit and term loan components."
-            ❌ Long explanations, disclaimers, or verbose descriptions
+            PERFECT SUMMARY EXAMPLES:
+            ✅ "Apollo Global Management provided a $500M credit facility to TechCorp to finance its acquisition of three software companies in the healthcare sector. The facility includes a $300M revolving credit line and $200M term loan with a 5-year maturity."
+            ✅ "Blackstone Credit closed $1.2B in senior financing for Vista Equity Partners' acquisition of Ping Identity, a cloud identity security company. The debt package consists of term loans and revolving credit facilities to support the $2.8B transaction."
+            ❌ Short, vague descriptions lacking specific details
+            ❌ Single sentences or more than 2 sentences
 
             Return as JSON with "articles" array. If no actual deals exist, return empty array.`
           },
           {
             role: 'user',
-            content: `Extract clean news articles about actual deals/transactions. Focus on concise, professional summaries (2 sentences max, 100 words max). Extract working URLs:\n\n${newsContent}`
+            content: `Extract clean news articles about actual deals/transactions. Each summary must be EXACTLY 2 comprehensive, informative sentences that include all key transaction details (amounts, parties, structure, purpose). Extract working URLs:\n\n${newsContent}`
           }
         ],
         max_tokens: 4000,
@@ -114,17 +116,21 @@ export class OpenAIService {
       });
       
       const processedArticles = filteredArticles.map((article: any) => {
-        // Ensure summary is concise (max 100 words, 2 sentences)
+        // Ensure summary is exactly 2 informative sentences
         let summary = article.summary || 'No summary available';
         const sentences = summary.split(/[.!?]+/).filter((s: string) => s.trim().length > 0);
-        if (sentences.length > 2) {
-          summary = sentences.slice(0, 2).join('. ') + '.';
+        
+        if (sentences.length === 1) {
+          // If only one sentence, keep it as is but ensure it's comprehensive
+          summary = sentences[0].trim() + '.';
+        } else if (sentences.length >= 2) {
+          // Take exactly 2 sentences for comprehensive coverage
+          summary = sentences.slice(0, 2).join('. ').trim() + '.';
         }
         
-        // Limit to 100 words
-        const words = summary.split(' ');
-        if (words.length > 100) {
-          summary = words.slice(0, 100).join(' ') + '...';
+        // Ensure minimum quality - if too short, it's probably not informative enough
+        if (summary.length < 50) {
+          summary = 'Limited details available for this transaction. Please refer to the original source for more information.';
         }
         
         return {

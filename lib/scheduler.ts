@@ -115,8 +115,8 @@ export class DealScheduler {
                 });
                 
                 if (!isDuplicate) {
-                  console.log(`Saving article: "${article.title}"`);
-                  await db.saveDeal({
+                  console.log(`💾 Saving article to Supabase: "${article.title}"`);
+                  const dealId = await db.saveDeal({
                     date,
                     title: article.title,
                     summary: article.summary,
@@ -126,7 +126,7 @@ export class DealScheduler {
                     category: article.category || 'Deal Activity'
                   });
                   totalArticlesSaved++;
-                  console.log(`✅ Saved article: "${article.title}"`);
+                  console.log(`✅ Article saved to Supabase with ID ${dealId}: "${article.title}"`);
                 } else {
                   console.log(`⚠️ Skipping duplicate article: "${article.title}"`);
                 }
@@ -381,8 +381,10 @@ export function getScheduler(): DealScheduler {
   return schedulerInstance;
 }
 
-// Auto-start scheduler in all environments
-if (typeof window === 'undefined') { // Only run on server side
-  console.log('Initializing scheduler...');
+// Auto-start scheduler only in local development (not on Vercel)
+if (typeof window === 'undefined' && !process.env.VERCEL) { // Only run on server side and not on Vercel
+  console.log('Initializing local scheduler...');
   getScheduler().startScheduler();
+} else if (process.env.VERCEL) {
+  console.log('Vercel environment detected - using Vercel Cron Jobs instead of local scheduler');
 } 

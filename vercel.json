@@ -1,10 +1,16 @@
 {
   "functions": {
-    "app/api/**/*.ts": {
-      "maxDuration": 60
+    "app/api/*/route.ts": {
+      "maxDuration": 300
     }
   },
   "env": {
     "DATABASE_PATH": "./tmp/database.sqlite"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/daily-news",
+      "schedule": "0 17 * * *"
+    }
+  ]
 } 

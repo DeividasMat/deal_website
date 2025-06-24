@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format, subDays, isToday, isYesterday, isThisWeek } from 'date-fns';
+import { format, isToday, isYesterday, isThisWeek } from 'date-fns';
 
 interface Deal {
   id: number;
@@ -67,20 +67,21 @@ const categorizeArticle = (deal: Deal): { category: string; region: string; type
   return { category, region, type };
 };
 
-// Color schemes for different categories
+// Bloomberg-style color schemes for different categories
 const getCategoryColor = (type: string): string => {
   const colors: { [key: string]: string } = {
-    'Fund Raising': 'bg-emerald-50 border-emerald-200 text-emerald-800',
-    'Private Equity': 'bg-blue-50 border-blue-200 text-blue-800',
-    'Credit Facility': 'bg-purple-50 border-purple-200 text-purple-800',
-    'M&A': 'bg-orange-50 border-orange-200 text-orange-800',
-    'Public Markets': 'bg-indigo-50 border-indigo-200 text-indigo-800',
-    'Distressed': 'bg-red-50 border-red-200 text-red-800',
-    'Real Estate': 'bg-yellow-50 border-yellow-200 text-yellow-800',
-    'Infrastructure': 'bg-teal-50 border-teal-200 text-teal-800',
-    'Market News': 'bg-slate-50 border-slate-200 text-slate-800',
+    'Fund Raising': 'badge-fund-raising',
+    'Private Equity': 'badge-private-equity',
+    'Credit Facility': 'badge-credit-facility',
+    'M&A': 'badge-ma',
+    'Public Markets': 'badge-private-equity',
+    'Distressed': 'badge-distressed',
+    'Real Estate': 'badge-ma',
+    'Infrastructure': 'badge-credit-facility',
+    'Market News': 'badge-private-equity',
+    'Deal Activity': 'badge-credit-facility',
   };
-  return colors[type] || colors['Market News'];
+  return colors[type] || 'badge-private-equity';
 };
 
 const getRegionFlag = (region: string): string => {
@@ -102,7 +103,7 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [loading, setLoading] = useState(false);
-  const [fetching, setFetching] = useState(false);
+  const [upvoting, setUpvoting] = useState<number | null>(null);
   const [apiStatus, setApiStatus] = useState<{perplexity: string, openai: string, supabase: string} | null>(null);
 
   // Load all deals and check API status on component mount
@@ -221,54 +222,12 @@ export default function Home() {
     }
   };
 
-  const fetchNewDeals = async () => {
-    setFetching(true);
-    try {
-      let requestBody;
-      
-      if (selectedDateRange === 'week') {
-        requestBody = { action: 'fetch', dateRange: 'week' };
-      } else if (selectedDateRange === 'today') {
-        const today = format(new Date(), 'yyyy-MM-dd');
-        requestBody = { action: 'fetch', date: today };
-      } else if (selectedDateRange === 'yesterday') {
-        const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
-        requestBody = { action: 'fetch', date: yesterday };
-      } else {
-        const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
-        requestBody = { action: 'fetch', date: yesterday };
-      }
-      
-      const response = await fetch('/api/deals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
 
-      const data = await response.json();
-      
-      if (data.success) {
-        if (data.dateRange === 'week') {
-          alert(`✅ Week fetch completed!\n\nTotal articles: ${data.totalDeals}\nNew articles: ${data.newDeals}`);
-        }
-        await loadAllDeals();
-        await loadAvailableDates();
-      } else {
-        const errorMsg = data.error || 'Unknown error';
-        if (errorMsg.includes('PERPLEXITY_API_KEY')) {
-          alert('🔑 Missing Perplexity API Key\n\nPlease configure your API keys in the environment variables.');
-        } else if (errorMsg.includes('OPENAI_API_KEY')) {
-          alert('🔑 Missing OpenAI API Key\n\nPlease configure your API keys in the environment variables.');
-        }
-      }
-    } catch (error) {
-      console.error('Network error:', error);
-    } finally {
-      setFetching(false);
-    }
-  };
 
-  const upvoteArticle = async (articleId: number) => {
+  const handleUpvote = async (articleId: number) => {
+    if (upvoting === articleId) return;
+    
+    setUpvoting(articleId);
     try {
       const response = await fetch('/api/deals', {
         method: 'POST',
@@ -291,6 +250,8 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error upvoting:', error);
+    } finally {
+      setUpvoting(null);
     }
   };
 
@@ -316,20 +277,20 @@ export default function Home() {
   const regions = Array.from(new Set(deals.map(deal => categorizeArticle(deal).region))).sort();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)' }}>
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
         {/* API Configuration Warning */}
         {(apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing' || apiStatus?.supabase === 'missing') && (
-          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6 shadow-sm">
+          <div className="status-warning rounded-xl p-6 shadow-bloomberg">
             <div className="flex">
               <div className="flex-shrink-0">
                 <span className="text-2xl">⚠️</span>
               </div>
               <div className="ml-4">
-                <h3 className="text-lg font-semibold text-amber-800 mb-2">
+                <h3 className="text-lg font-semibold mb-2 text-caption">
                   Configuration Required
                 </h3>
-                <div className="text-sm text-amber-700 space-y-2">
+                <div className="text-sm space-y-2 text-body">
                   {apiStatus?.supabase === 'missing' && (
                     <p>🗄️ <strong>Missing Supabase configuration</strong> - Configure your cloud database</p>
                   )}
@@ -346,143 +307,138 @@ export default function Home() {
         )}
 
         {/* Header */}
-        <div className="text-center border-b border-slate-200 pb-8">
-          <h1 className="text-5xl font-light text-slate-800 mb-4 tracking-tight">
+        <div className="text-center pb-8">
+          <div className="divider mb-8"></div>
+          <h1 className="text-headline text-6xl mb-4 tracking-tight" style={{ color: 'var(--dark-navy)' }}>
             Private Credit Intelligence
           </h1>
-          <p className="text-xl text-slate-600 font-light max-w-2xl mx-auto">
+          <p className="text-subheadline text-xl max-w-2xl mx-auto" style={{ color: 'var(--slate-600)' }}>
             Real-time market intelligence, transaction analysis, and fund activity across global private credit markets
           </p>
+          <div className="divider mt-8"></div>
         </div>
 
-        {/* Enhanced Controls */}
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-slate-200">
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-end">
+        {/* Enhanced Filters */}
+        <div className="card-elevated rounded-xl p-8">
+          <div className="mb-6">
+            <h2 className="text-headline text-lg mb-2" style={{ color: 'var(--dark-navy)' }}>Market Intelligence Filters</h2>
+            <p className="text-caption" style={{ color: 'var(--slate-600)' }}>Refine your view of private credit market activity</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Time Period */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-3">
+            <div className="space-y-3">
+              <label className="block text-caption" style={{ color: 'var(--slate-700)' }}>
                 📅 Time Period
               </label>
               <select
                 value={selectedDateRange}
                 onChange={(e) => handleDateRangeChange(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 bg-white text-slate-700"
+                className="form-select w-full px-4 py-3 rounded-lg"
               >
-                <option value="all">All News</option>
+                <option value="all">All Periods</option>
                 <option value="today">Today</option>
                 <option value="yesterday">Yesterday</option>
                 <option value="week">This Week</option>
               </select>
+              <div className="text-xs" style={{ color: 'var(--slate-500)' }}>
+                Filter by publication date
+              </div>
             </div>
 
-            {/* Category Filter */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-3">
-                🏷️ Deal Type
+            {/* Deal Type Filter */}
+            <div className="space-y-3">
+              <label className="block text-caption" style={{ color: 'var(--slate-700)' }}>
+                🏷️ Transaction Type
               </label>
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 bg-white text-slate-700"
+                className="form-select w-full px-4 py-3 rounded-lg"
               >
-                <option value="all">All Types</option>
+                <option value="all">All Transaction Types</option>
                 {categories.map(category => (
                   <option key={category} value={category}>{category}</option>
                 ))}
               </select>
+              <div className="text-xs" style={{ color: 'var(--slate-500)' }}>
+                {categories.length} types available
+              </div>
             </div>
 
-            {/* Region Filter */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-3">
-                🌍 Region
+            {/* Geographic Region */}
+            <div className="space-y-3">
+              <label className="block text-caption" style={{ color: 'var(--slate-700)' }}>
+                🌍 Geographic Focus
               </label>
               <select
                 value={selectedRegion}
                 onChange={(e) => setSelectedRegion(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 bg-white text-slate-700"
+                className="form-select w-full px-4 py-3 rounded-lg"
               >
-                <option value="all">All Regions</option>
+                <option value="all">Global Coverage</option>
                 {regions.map(region => (
                   <option key={region} value={region}>{getRegionFlag(region)} {region}</option>
                 ))}
               </select>
-            </div>
-
-            {/* Fetch Button */}
-            <div>
-              <button
-                onClick={fetchNewDeals}
-                disabled={fetching || (apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing' || apiStatus?.supabase === 'missing')}
-                className="w-full px-6 py-3 bg-gradient-to-r from-slate-800 to-slate-700 text-white rounded-lg hover:from-slate-700 hover:to-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-all duration-200 shadow-lg"
-              >
-                {fetching ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Analyzing...
-                  </span>
-                ) : (
-                  '🔍 Fetch Latest News'
-                )}
-              </button>
+              <div className="text-xs" style={{ color: 'var(--slate-500)' }}>
+                {regions.length} regions tracked
+              </div>
             </div>
           </div>
         </div>
 
         {/* Statistics Bar */}
-        {!loading && !fetching && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200 text-center">
-              <div className="text-2xl font-bold text-slate-800">{filteredDeals.length}</div>
-              <div className="text-sm text-slate-600">Total Articles</div>
+        {!loading && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="card-elevated rounded-lg p-6 text-center">
+              <div className="text-3xl font-bold mb-2 text-headline" style={{ color: 'var(--dark-navy)' }}>{filteredDeals.length}</div>
+              <div className="text-caption" style={{ color: 'var(--slate-600)' }}>Total Articles</div>
             </div>
-            <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200 text-center">
-              <div className="text-2xl font-bold text-emerald-600">{categories.length}</div>
-              <div className="text-sm text-slate-600">Deal Types</div>
+            <div className="card-elevated rounded-lg p-6 text-center">
+              <div className="text-3xl font-bold mb-2 text-headline" style={{ color: 'var(--success-green)' }}>{categories.length}</div>
+              <div className="text-caption" style={{ color: 'var(--slate-600)' }}>Deal Types</div>
             </div>
-            <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200 text-center">
-              <div className="text-2xl font-bold text-blue-600">{regions.length}</div>
-              <div className="text-sm text-slate-600">Regions</div>
+            <div className="card-elevated rounded-lg p-6 text-center">
+              <div className="text-3xl font-bold mb-2 text-headline" style={{ color: 'var(--primary-blue)' }}>{regions.length}</div>
+              <div className="text-caption" style={{ color: 'var(--slate-600)' }}>Regions</div>
             </div>
-            <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200 text-center">
-              <div className="text-2xl font-bold text-purple-600">
+            <div className="card-elevated rounded-lg p-6 text-center">
+              <div className="text-3xl font-bold mb-2 text-headline" style={{ color: 'var(--accent-orange)' }}>
                 {filteredDeals.reduce((sum, deal) => sum + (deal.upvotes || 0), 0)}
               </div>
-              <div className="text-sm text-slate-600">Total Upvotes</div>
+              <div className="text-caption" style={{ color: 'var(--slate-600)' }}>Total Upvotes</div>
             </div>
           </div>
         )}
 
         {/* Loading State */}
-        {(loading || fetching) && (
+        {loading && (
           <div className="text-center py-20">
-            <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-slate-600 mb-6"></div>
-            <p className="text-xl text-slate-700 font-light mb-2">
-              {fetching ? 'Analyzing Global Markets...' : 'Loading Intelligence...'}
+            <div className="spinner w-16 h-16 mx-auto mb-6"></div>
+            <p className="text-subheadline text-xl mb-2" style={{ color: 'var(--slate-700)' }}>
+              Loading Intelligence...
             </p>
-            <p className="text-sm text-slate-500">
-              {fetching ? 'Powered by Perplexity AI and OpenAI' : 'Organizing market data'}
+            <p className="text-caption" style={{ color: 'var(--slate-600)' }}>
+              Organizing market data
             </p>
           </div>
         )}
 
         {/* Enhanced News Display */}
-        {!loading && !fetching && (
+        {!loading && (
           <div className="space-y-6">
             {filteredDeals.length === 0 ? (
-              <div className="text-center py-20 bg-white rounded-xl shadow-sm border border-slate-200">
-                <div className="text-8xl mb-8 text-slate-300">📊</div>
-                <h3 className="text-2xl font-light text-slate-800 mb-4">No Articles Found</h3>
-                <p className="text-slate-600 mb-8 font-light max-w-md mx-auto">
+              <div className="text-center py-20 card-elevated rounded-xl">
+                <div className="text-8xl mb-8" style={{ color: 'var(--slate-300)' }}>📊</div>
+                <h3 className="text-headline text-2xl mb-4" style={{ color: 'var(--slate-800)' }}>No Articles Found</h3>
+                <p className="text-body mb-8 max-w-md mx-auto" style={{ color: 'var(--slate-600)' }}>
                   {selectedCategory !== 'all' || selectedRegion !== 'all' 
-                    ? 'Try adjusting your filters or fetch new content'
-                    : 'Click "Fetch Latest News" to discover market intelligence'
+                    ? 'Try adjusting your filters to see more content'
+                    : 'No articles match your current criteria'
                   }
                 </p>
-                <p className="text-sm text-slate-500">
+                <p className="text-caption" style={{ color: 'var(--slate-500)' }}>
                   AI-powered analysis from global financial sources
                 </p>
               </div>
@@ -502,23 +458,23 @@ export default function Home() {
                     const regionFlag = getRegionFlag(region);
                     
                     return (
-                      <article key={deal.id} className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-all duration-200">
+                      <article key={deal.id} className="card-elevated rounded-xl group">
                         <div className="p-8">
                           {/* Header with badges */}
                           <div className="flex flex-wrap items-start justify-between mb-6 gap-4">
                             <div className="flex-grow">
                               <div className="flex flex-wrap items-center gap-3 mb-4">
-                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${categoryColor}`}>
+                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${categoryColor}`}>
                                   {type}
                                 </span>
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium badge-private-equity">
                                   {regionFlag} {region}
                                 </span>
-                                <span className="text-sm text-slate-500 font-light">
+                                <span className="text-caption" style={{ color: 'var(--slate-500)' }}>
                                   {formatDate(deal.date)}
                                 </span>
                               </div>
-                              <h3 className="text-xl font-semibold text-slate-800 mb-3 leading-tight hover:text-slate-600 transition-colors">
+                              <h3 className="text-headline text-xl mb-3 leading-tight group-hover:opacity-80 transition-opacity" style={{ color: 'var(--dark-navy)' }}>
                                 {deal.title}
                               </h3>
                             </div>
@@ -526,14 +482,15 @@ export default function Home() {
                             {/* Upvote button */}
                             <div className="flex flex-col items-center">
                               <button
-                                onClick={() => upvoteArticle(deal.id)}
-                                className="flex flex-col items-center p-3 rounded-xl hover:bg-slate-50 transition-all duration-200 group border border-transparent hover:border-slate-200"
+                                onClick={() => handleUpvote(deal.id)}
+                                disabled={upvoting === deal.id}
+                                className="flex flex-col items-center p-3 rounded-xl transition-all duration-200 group border border-transparent hover:bg-surface-gradient hover:shadow-bloomberg disabled:opacity-50"
                                 title="Upvote this article"
                               >
-                                <svg className="w-6 h-6 text-slate-400 group-hover:text-slate-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-6 h-6 transition-colors group-hover:opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--slate-400)' }}>
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                                 </svg>
-                                <span className="text-sm font-semibold text-slate-600 mt-1">
+                                <span className="text-sm font-semibold mt-1" style={{ color: 'var(--slate-600)' }}>
                                   {deal.upvotes || 0}
                                 </span>
                               </button>
@@ -541,32 +498,42 @@ export default function Home() {
                           </div>
                           
                           {/* Content */}
-                          <div className="text-slate-700 leading-relaxed mb-6 font-light text-base">
+                          <div className="text-body leading-relaxed mb-6" style={{ color: 'var(--slate-700)' }}>
                             {deal.summary}
                           </div>
                           
                           {/* Footer */}
-                          <div className="flex items-center justify-between text-sm text-slate-500 pt-6 border-t border-slate-100">
-                            <div className="flex items-center space-x-6">
-                              <span className="font-medium">📰 {deal.source}</span>
-                              {deal.source_url && (
-                                <a 
-                                  href={deal.source_url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-slate-600 hover:text-slate-800 font-medium transition-colors inline-flex items-center"
-                                >
-                                  Read Full Article 
-                                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                  </svg>
-                                </a>
-                              )}
+                                                      <div className="pt-6">
+                              <div className="divider mb-4"></div>
+                              <div className="flex items-center justify-between text-caption">
+                                <div className="flex items-center space-x-6">
+                                  {deal.source_url ? (
+                                    <a 
+                                      href={deal.source_url} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="font-medium transition-opacity hover:opacity-80 inline-flex items-center"
+                                      style={{ color: 'var(--primary-blue)' }}
+                                    >
+                                      📰 Read Original Article
+                                      <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                      </svg>
+                                    </a>
+                                  ) : (
+                                    <span className="font-medium" style={{ color: 'var(--slate-600)' }}>
+                                      📰 AI-Curated Intelligence
+                                    </span>
+                                  )}
+                                  <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: 'var(--slate-100)', color: 'var(--slate-600)' }}>
+                                    AI Analyzed
+                                  </span>
+                                </div>
+                                <span className="font-light" style={{ color: 'var(--slate-500)' }}>
+                                  {format(new Date(deal.created_at), 'MMM d, h:mm a')}
+                                </span>
+                              </div>
                             </div>
-                            <span className="font-light">
-                              {format(new Date(deal.created_at), 'MMM d, h:mm a')}
-                            </span>
-                          </div>
                         </div>
                       </article>
                     );
