@@ -87,7 +87,7 @@ export class DealScheduler {
             
             console.log(`Found ${articles.length} articles in ${section.category} section:`, articles.map((a: any) => a.title));
             
-            // Save each article with basic duplicate detection
+            // Save each article with enhanced duplicate detection and link updating
             for (const article of articles) {
               try {
                 // Basic validation - just check if we have title and summary
@@ -102,36 +102,61 @@ export class DealScheduler {
                   continue;
                 }
 
-                // Simple duplicate detection - check title similarity
-                const isDuplicate = existingDeals.some(existing => {
-                  const existingTitle = existing.title.toLowerCase().trim();
-                  const newTitle = article.title.toLowerCase().trim();
-                  
-                  // Check exact match or very similar titles
-                  return existingTitle === newTitle || 
-                         (existingTitle.length > 10 && newTitle.length > 10 && 
-                          existingTitle.includes(newTitle.substring(0, 15)) ||
-                          newTitle.includes(existingTitle.substring(0, 15)));
-                });
+                // Enhanced duplicate detection - check for existing articles
+                const duplicates = await db.findDuplicateDeals(article.title, date);
                 
-                if (!isDuplicate) {
-                  console.log(`💾 Saving article to Supabase: "${article.title}"`);
+                if (duplicates.length > 0) {
+                  // Found duplicates - check if we can update them with missing information
+                  let updatedAny = false;
+                  
+                  for (const duplicate of duplicates) {
+                    // Update if missing source_url and we have one
+                    if (!duplicate.source_url && article.source_url) {
+                      await db.updateDealSourceUrl(
+                        duplicate.id!, 
+                        article.source_url, 
+                        article.original_source || undefined
+                      );
+                      console.log(`🔗 Updated duplicate article ${duplicate.id} with source URL: ${article.source_url}`);
+                      updatedAny = true;
+                    }
+                    // Or update if we have a better source (more specific publication)
+                    else if (duplicate.source_url && article.source_url && 
+                             article.original_source && 
+                             duplicate.source === 'Perplexity + OpenAI' &&
+                             ['Bloomberg', 'Reuters', 'Financial Times', 'WSJ'].includes(article.original_source)) {
+                      await db.updateDealSourceUrl(
+                        duplicate.id!, 
+                        article.source_url, 
+                        article.original_source
+                      );
+                      console.log(`📰 Updated duplicate article ${duplicate.id} with better source: ${article.original_source}`);
+                      updatedAny = true;
+                    }
+                  }
+                  
+                  if (updatedAny) {
+                    console.log(`✅ Enhanced existing duplicate articles for: "${article.title}"`);
+                  } else {
+                    console.log(`⚠️ Skipping duplicate article (no new information): "${article.title}"`);
+                  }
+                } else {
+                  // No duplicates found - save as new article
+                  console.log(`💾 Saving new article to Supabase: "${article.title}"`);
                   const dealId = await db.saveDeal({
                     date,
                     title: article.title,
                     summary: article.summary,
                     content: section.content, // Keep section content for reference
-                    source: 'Perplexity + OpenAI',
+                    source: article.original_source || 'Financial News',
                     source_url: article.source_url,
-                    category: article.category || 'Deal Activity'
+                    category: article.category || 'Market News' // Use proper category from OpenAI
                   });
                   totalArticlesSaved++;
-                  console.log(`✅ Article saved to Supabase with ID ${dealId}: "${article.title}"`);
-                } else {
-                  console.log(`⚠️ Skipping duplicate article: "${article.title}"`);
+                  console.log(`✅ New article saved to Supabase with ID ${dealId}: "${article.title}"`);
                 }
               } catch (saveError) {
-                console.error(`❌ Error saving article "${article.title}":`, saveError);
+                console.error(`❌ Error processing article "${article.title}":`, saveError);
               }
             }
           } catch (extractError) {
@@ -142,22 +167,18 @@ export class DealScheduler {
             try {
               const fallbackSummary = await this.getOpenAIService().summarizeDeals(section.content);
               
-              // Check if fallback summary is duplicate
-              const isDuplicate = existingDeals.some(existing => {
-                const existingTitle = existing.title.toLowerCase().trim();
-                const newTitle = fallbackSummary.title.toLowerCase().trim();
-                return existingTitle === newTitle;
-              });
+              // Check for duplicates
+              const duplicates = await db.findDuplicateDeals(fallbackSummary.title, date);
               
-              if (!isDuplicate) {
+              if (duplicates.length === 0) {
                 await db.saveDeal({
                   date,
                   title: fallbackSummary.title,
                   summary: fallbackSummary.summary,
                   content: section.content,
-                  source: 'Perplexity + OpenAI',
+                  source: fallbackSummary.original_source || 'Financial News',
                   source_url: fallbackSummary.source_url,
-                  category: fallbackSummary.category || 'Deal Activity'
+                  category: fallbackSummary.category || 'Market News'
                 });
                 totalArticlesSaved++;
                 console.log(`✅ Saved fallback summary: "${fallbackSummary.title}"`);

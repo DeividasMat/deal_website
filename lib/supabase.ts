@@ -475,6 +475,66 @@ CREATE POLICY "Anyone can insert votes" ON votes
     console.log(`🗑️ Deleted ${dealIds.length} deals with IDs: ${dealIds.join(', ')}`);
     return true;
   }
+
+  async updateDealSourceUrl(dealId: number, sourceUrl: string, originalSource?: string): Promise<boolean> {
+    await this.ensureInitialized();
+    
+    const updateData: any = { source_url: sourceUrl };
+    
+    // Update source attribution if provided
+    if (originalSource) {
+      updateData.source = originalSource;
+    }
+    
+    const { error } = await this.supabase
+      .from('deals')
+      .update(updateData)
+      .eq('id', dealId);
+
+    if (error) {
+      console.error('❌ Failed to update deal source URL:', error);
+      throw new Error(`Failed to update deal source URL: ${error.message}`);
+    }
+
+    console.log(`🔗 Updated deal ${dealId} with source URL: ${sourceUrl}`);
+    return true;
+  }
+
+  async findDuplicateDeals(title: string, date: string): Promise<Deal[]> {
+    await this.ensureInitialized();
+    
+    // Normalize title for comparison
+    const normalizedTitle = title.toLowerCase()
+      .replace(/[^\w\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    const { data, error } = await this.supabase
+      .from('deals')
+      .select('*')
+      .eq('date', date);
+
+    if (error) {
+      console.error('❌ Failed to find duplicate deals:', error);
+      throw new Error(`Failed to find duplicate deals: ${error.message}`);
+    }
+
+    // Filter by title similarity
+    const duplicates = (data || []).filter(deal => {
+      const dealTitle = deal.title.toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      
+      // Check for exact match or high similarity
+      return dealTitle === normalizedTitle || 
+             (dealTitle.length > 10 && normalizedTitle.length > 10 && 
+              (dealTitle.includes(normalizedTitle.substring(0, 15)) ||
+               normalizedTitle.includes(dealTitle.substring(0, 15))));
+    });
+
+    return duplicates;
+  }
 }
 
 let dbInstance: SupabaseDatabase | null = null;

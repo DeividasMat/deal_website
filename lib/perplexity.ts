@@ -337,13 +337,13 @@ export class PerplexityService {
               1. Find REAL, SPECIFIC news from the EXACT requested date
               2. ONLY include news that has a clear publication date
               3. Include exact company names, deal amounts, and transaction details
-              4. Provide source URLs whenever possible
+              4. MUST provide source URLs whenever possible - this is critical for verification
               5. Focus on factual announcements, not general market commentary
               6. Each news item should include:
                  - Specific headline with company/fund names
                  - Key financial details (amounts, terms, etc.)
                  - Source publication name and date
-                 - URL link if available
+                 - DIRECT article URL (essential for credibility)
                  - Brief summary of significance
 
               IMPORTANT DATE REQUIREMENT:
@@ -351,13 +351,18 @@ export class PerplexityService {
               - If no news exists for that exact date, clearly state "No news found for this specific date"
               - Do not include general market commentary or older news
 
-              FORMAT EACH NEWS ITEM AS:
+              FORMAT EACH NEWS ITEM EXACTLY AS:
               • [HEADLINE] - [Company/Fund Name] [Deal/Announcement Details]
+                Source: [Publication Name] | [DIRECT URL]
                 Date: [Publication Date]
-                Source: [Publication Name] ([URL if available])
-                Summary: [Brief explanation of significance]
+                Summary: [Brief explanation with key amounts and parties]
 
-              Prioritize recent, verified announcements with specific financial details and confirmed dates.`
+              REQUIRED URL FORMAT:
+              - Must include working URLs like: https://www.bloomberg.com/news/articles/...
+              - URLs from: Bloomberg, Reuters, Financial Times, WSJ, Private Equity International, etc.
+              - If no URL available, write "Source: [Publication] | URL not available"
+
+              Prioritize recent, verified announcements with specific financial details, confirmed dates, and WORKING SOURCE LINKS.`
             },
             {
               role: 'user',

@@ -67,6 +67,20 @@ const categorizeArticle = (deal: Deal): { category: string; region: string; type
   return { category, region, type };
 };
 
+// Function to convert markdown-style bold formatting to HTML
+const formatSummaryWithBold = (summary: string): React.ReactNode => {
+  const parts = summary.split(/(\*\*.*?\*\*)/g);
+  
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      // Remove the ** markers and make it bold
+      const boldText = part.slice(2, -2);
+      return <strong key={index} className="font-semibold text-gray-900">{boldText}</strong>;
+    }
+    return part;
+  });
+};
+
 // Apple-style category badge mapping
 const getCategoryBadge = (type: string): string => {
   const badges: { [key: string]: string } = {
@@ -308,22 +322,29 @@ export default function Home() {
         {/* Hero Section */}
         <div className="relative py-16 pb-40">
           <div className="text-center">
-            <h1 className="apple-title text-4xl mb-8">
-              Private Credit Pulse
-            </h1>
+            <a 
+              href="https://privatecreditpulse.substack.com/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-block"
+            >
+              <h1 className="apple-title text-4xl mb-8 hover:opacity-80 transition-opacity cursor-pointer">
+                Private Credit Pulse
+              </h1>
+            </a>
           </div>
           
           {/* Substack Embed - Right Corner */}
           <div className="absolute top-8 right-0 hidden lg:block">
             <div className="apple-card-minimal p-3 rounded-lg mb-8">
               <iframe 
-                src="https://privatecreditpulse.substack.com/embed" 
+                src="https://privatecreditpulse.substack.com/embed?simple=true" 
                 width="300" 
-                height="200" 
+                height="180" 
                 style={{ border: '1px solid #EEE', background: 'white', borderRadius: '8px' }} 
                 frameBorder="0" 
                 scrolling="no"
-                title="Private Credit Pulse Newsletter"
+                title="Newsletter Signup"
               />
             </div>
           </div>
@@ -483,28 +504,35 @@ export default function Home() {
                           </button>
                         </div>
                         
+                        {/* Article Source Link - Above Content */}
+                        {deal.source_url && (
+                          <div className="mb-4">
+                            <a 
+                              href={deal.source_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-medium rounded-lg transition-colors"
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                              Read Original Article
+                            </a>
+                          </div>
+                        )}
+                        
                         {/* Content */}
                         <div className="apple-body mb-6 leading-relaxed">
-                          {deal.summary}
+                          {formatSummaryWithBold(deal.summary)}
                         </div>
                         
                         {/* Footer */}
                         <div className="pt-4 border-t border-gray-100">
                           <div className="flex justify-between items-center">
                             <div className="flex items-center space-x-4">
-                              {deal.source_url && (
-                                <a 
-                                  href={deal.source_url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="apple-button-ghost text-sm"
-                                >
-                                  Read Original
-                                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                  </svg>
-                                </a>
-                              )}
+                              <span className="apple-small text-gray-500">
+                                Source: {deal.source}
+                              </span>
                             </div>
                             <span className="apple-small">
                               {format(new Date(deal.created_at), 'MMM d, h:mm a')}
