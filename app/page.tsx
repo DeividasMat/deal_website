@@ -67,21 +67,21 @@ const categorizeArticle = (deal: Deal): { category: string; region: string; type
   return { category, region, type };
 };
 
-// Bloomberg-style color schemes for different categories
-const getCategoryColor = (type: string): string => {
-  const colors: { [key: string]: string } = {
-    'Fund Raising': 'badge-fund-raising',
-    'Private Equity': 'badge-private-equity',
-    'Credit Facility': 'badge-credit-facility',
-    'M&A': 'badge-ma',
-    'Public Markets': 'badge-private-equity',
-    'Distressed': 'badge-distressed',
-    'Real Estate': 'badge-ma',
-    'Infrastructure': 'badge-credit-facility',
-    'Market News': 'badge-private-equity',
-    'Deal Activity': 'badge-credit-facility',
+// Apple-style category badge mapping
+const getCategoryBadge = (type: string): string => {
+  const badges: { [key: string]: string } = {
+    'Fund Raising': 'apple-badge-green',
+    'Private Equity': 'apple-badge-blue',
+    'Credit Facility': 'apple-badge-purple',
+    'M&A': 'apple-badge-orange',
+    'Public Markets': 'apple-badge-blue',
+    'Distressed': 'apple-badge-orange',
+    'Real Estate': 'apple-badge-green',
+    'Infrastructure': 'apple-badge-purple',
+    'Market News': 'apple-badge-gray',
+    'Deal Activity': 'apple-badge-blue',
   };
-  return colors[type] || 'badge-private-equity';
+  return badges[type] || 'apple-badge-gray';
 };
 
 const getRegionFlag = (region: string): string => {
@@ -222,8 +222,6 @@ export default function Home() {
     }
   };
 
-
-
   const handleUpvote = async (articleId: number) => {
     if (upvoting === articleId) return;
     
@@ -277,173 +275,167 @@ export default function Home() {
   const regions = Array.from(new Set(deals.map(deal => categorizeArticle(deal).region))).sort();
 
   return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)' }}>
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+    <div className="min-h-screen bg-white">
+      <div className="apple-container">
+        
         {/* API Configuration Warning */}
         {(apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing' || apiStatus?.supabase === 'missing') && (
-          <div className="status-warning rounded-xl p-6 shadow-bloomberg">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <span className="text-2xl">⚠️</span>
-              </div>
-              <div className="ml-4">
-                <h3 className="text-lg font-semibold mb-2 text-caption">
-                  Configuration Required
-                </h3>
-                <div className="text-sm space-y-2 text-body">
-                  {apiStatus?.supabase === 'missing' && (
-                    <p>🗄️ <strong>Missing Supabase configuration</strong> - Configure your cloud database</p>
-                  )}
-                  {apiStatus?.perplexity === 'missing' && (
-                    <p>🔑 <strong>Missing Perplexity API key</strong> - Required for news intelligence</p>
-                  )}
-                  {apiStatus?.openai === 'missing' && (
-                    <p>🔑 <strong>Missing OpenAI API key</strong> - Required for content analysis</p>
-                  )}
+          <div className="apple-space-md">
+            <div className="apple-card" style={{ background: 'rgba(255, 149, 0, 0.05)', borderColor: 'var(--apple-orange)' }}>
+              <div className="p-6">
+                <div className="flex items-start space-x-4">
+                  <div className="text-2xl">⚠️</div>
+                  <div>
+                    <h3 className="apple-headline text-lg mb-2">Setup Required</h3>
+                    <div className="apple-body space-y-2">
+                      {apiStatus?.supabase === 'missing' && (
+                        <p>🗄️ Missing Supabase configuration</p>
+                      )}
+                      {apiStatus?.perplexity === 'missing' && (
+                        <p>🔑 Missing Perplexity API key</p>
+                      )}
+                      {apiStatus?.openai === 'missing' && (
+                        <p>🔑 Missing OpenAI API key</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Header */}
-        <div className="text-center pb-8">
-          <div className="divider mb-8"></div>
-          <h1 className="text-headline text-6xl mb-4 tracking-tight" style={{ color: 'var(--dark-navy)' }}>
-            Private Credit Intelligence
-          </h1>
-          <p className="text-subheadline text-xl max-w-2xl mx-auto" style={{ color: 'var(--slate-600)' }}>
-            Real-time market intelligence, transaction analysis, and fund activity across global private credit markets
-          </p>
-          <div className="divider mt-8"></div>
-        </div>
-
-        {/* Enhanced Filters */}
-        <div className="card-elevated rounded-xl p-8">
-          <div className="mb-6">
-            <h2 className="text-headline text-lg mb-2" style={{ color: 'var(--dark-navy)' }}>Market Intelligence Filters</h2>
-            <p className="text-caption" style={{ color: 'var(--slate-600)' }}>Refine your view of private credit market activity</p>
+        {/* Hero Section */}
+        <div className="relative py-16 pb-40">
+          <div className="text-center">
+            <h1 className="apple-title text-4xl mb-8">
+              Private Credit Pulse
+            </h1>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Time Period */}
-            <div className="space-y-3">
-              <label className="block text-caption" style={{ color: 'var(--slate-700)' }}>
-                📅 Time Period
-              </label>
-              <select
-                value={selectedDateRange}
-                onChange={(e) => handleDateRangeChange(e.target.value)}
-                className="form-select w-full px-4 py-3 rounded-lg"
-              >
-                <option value="all">All Periods</option>
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="week">This Week</option>
-              </select>
-              <div className="text-xs" style={{ color: 'var(--slate-500)' }}>
-                Filter by publication date
-              </div>
+          {/* Substack Embed - Right Corner */}
+          <div className="absolute top-8 right-0 hidden lg:block">
+            <div className="apple-card-minimal p-3 rounded-lg mb-8">
+              <iframe 
+                src="https://privatecreditpulse.substack.com/embed" 
+                width="300" 
+                height="200" 
+                style={{ border: '1px solid #EEE', background: 'white', borderRadius: '8px' }} 
+                frameBorder="0" 
+                scrolling="no"
+                title="Private Credit Pulse Newsletter"
+              />
             </div>
+          </div>
+        </div>
 
-            {/* Deal Type Filter */}
-            <div className="space-y-3">
-              <label className="block text-caption" style={{ color: 'var(--slate-700)' }}>
-                🏷️ Transaction Type
-              </label>
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="form-select w-full px-4 py-3 rounded-lg"
-              >
-                <option value="all">All Transaction Types</option>
-                {categories.map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
-              <div className="text-xs" style={{ color: 'var(--slate-500)' }}>
-                {categories.length} types available
-              </div>
+        {/* Filters */}
+        <div className="mb-8">
+          <div className="apple-card p-6">
+            <div className="mb-6">
+              <h2 className="apple-headline text-lg mb-1">Filters</h2>
             </div>
+            
+            <div className="apple-grid apple-grid-3">
+              {/* Time Period */}
+              <div>
+                <label className="block apple-caption mb-3">Time Period</label>
+                <select
+                  value={selectedDateRange}
+                  onChange={(e) => handleDateRangeChange(e.target.value)}
+                  className="apple-select w-full"
+                >
+                  <option value="all">All Time</option>
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="week">This Week</option>
+                </select>
+              </div>
 
-            {/* Geographic Region */}
-            <div className="space-y-3">
-              <label className="block text-caption" style={{ color: 'var(--slate-700)' }}>
-                🌍 Geographic Focus
-              </label>
-              <select
-                value={selectedRegion}
-                onChange={(e) => setSelectedRegion(e.target.value)}
-                className="form-select w-full px-4 py-3 rounded-lg"
-              >
-                <option value="all">Global Coverage</option>
-                {regions.map(region => (
-                  <option key={region} value={region}>{getRegionFlag(region)} {region}</option>
-                ))}
-              </select>
-              <div className="text-xs" style={{ color: 'var(--slate-500)' }}>
-                {regions.length} regions tracked
+              {/* Transaction Type */}
+              <div>
+                <label className="block apple-caption mb-3">Transaction Type</label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="apple-select w-full"
+                >
+                  <option value="all">All Types</option>
+                  {categories.map(category => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Region */}
+              <div>
+                <label className="block apple-caption mb-3">Region</label>
+                <select
+                  value={selectedRegion}
+                  onChange={(e) => setSelectedRegion(e.target.value)}
+                  className="apple-select w-full"
+                >
+                  <option value="all">Global</option>
+                  {regions.map(region => (
+                    <option key={region} value={region}>{getRegionFlag(region)} {region}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Statistics Bar */}
+        {/* Statistics */}
         {!loading && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="card-elevated rounded-lg p-6 text-center">
-              <div className="text-3xl font-bold mb-2 text-headline" style={{ color: 'var(--dark-navy)' }}>{filteredDeals.length}</div>
-              <div className="text-caption" style={{ color: 'var(--slate-600)' }}>Total Articles</div>
-            </div>
-            <div className="card-elevated rounded-lg p-6 text-center">
-              <div className="text-3xl font-bold mb-2 text-headline" style={{ color: 'var(--success-green)' }}>{categories.length}</div>
-              <div className="text-caption" style={{ color: 'var(--slate-600)' }}>Deal Types</div>
-            </div>
-            <div className="card-elevated rounded-lg p-6 text-center">
-              <div className="text-3xl font-bold mb-2 text-headline" style={{ color: 'var(--primary-blue)' }}>{regions.length}</div>
-              <div className="text-caption" style={{ color: 'var(--slate-600)' }}>Regions</div>
-            </div>
-            <div className="card-elevated rounded-lg p-6 text-center">
-              <div className="text-3xl font-bold mb-2 text-headline" style={{ color: 'var(--accent-orange)' }}>
-                {filteredDeals.reduce((sum, deal) => sum + (deal.upvotes || 0), 0)}
+          <div className="mb-8">
+            <div className="apple-grid apple-grid-4">
+              <div className="apple-stat-card py-4">
+                <div className="text-2xl font-bold apple-title mb-1">{filteredDeals.length}</div>
+                <div className="apple-caption">Articles</div>
               </div>
-              <div className="text-caption" style={{ color: 'var(--slate-600)' }}>Total Upvotes</div>
+              <div className="apple-stat-card py-4">
+                <div className="text-2xl font-bold apple-title mb-1" style={{ color: 'var(--apple-green)' }}>{categories.length}</div>
+                <div className="apple-caption">Deal Types</div>
+              </div>
+              <div className="apple-stat-card py-4">
+                <div className="text-2xl font-bold apple-title mb-1" style={{ color: 'var(--apple-blue)' }}>{regions.length}</div>
+                <div className="apple-caption">Regions</div>
+              </div>
+              <div className="apple-stat-card py-4">
+                <div className="text-2xl font-bold apple-title mb-1" style={{ color: 'var(--apple-orange)' }}>
+                  {filteredDeals.reduce((sum, deal) => sum + (deal.upvotes || 0), 0)}
+                </div>
+                <div className="apple-caption">Upvotes</div>
+              </div>
             </div>
           </div>
         )}
 
         {/* Loading State */}
         {loading && (
-          <div className="text-center py-20">
-            <div className="spinner w-16 h-16 mx-auto mb-6"></div>
-            <p className="text-subheadline text-xl mb-2" style={{ color: 'var(--slate-700)' }}>
-              Loading Intelligence...
-            </p>
-            <p className="text-caption" style={{ color: 'var(--slate-600)' }}>
-              Organizing market data
-            </p>
+          <div className="apple-section text-center">
+            <div className="apple-spinner mx-auto mb-6"></div>
+            <p className="apple-headline text-xl mb-2">Loading Intelligence</p>
+            <p className="apple-caption">Organizing market data</p>
           </div>
         )}
 
-        {/* Enhanced News Display */}
+        {/* Articles */}
         {!loading && (
-          <div className="space-y-6">
+          <div>
             {filteredDeals.length === 0 ? (
-              <div className="text-center py-20 card-elevated rounded-xl">
-                <div className="text-8xl mb-8" style={{ color: 'var(--slate-300)' }}>📊</div>
-                <h3 className="text-headline text-2xl mb-4" style={{ color: 'var(--slate-800)' }}>No Articles Found</h3>
-                <p className="text-body mb-8 max-w-md mx-auto" style={{ color: 'var(--slate-600)' }}>
+              <div className="text-center py-20">
+                <div className="text-8xl mb-8 opacity-20">📊</div>
+                <h3 className="apple-headline text-2xl mb-4">No Articles Found</h3>
+                <p className="apple-body max-w-md mx-auto">
                   {selectedCategory !== 'all' || selectedRegion !== 'all' 
                     ? 'Try adjusting your filters to see more content'
                     : 'No articles match your current criteria'
                   }
                 </p>
-                <p className="text-caption" style={{ color: 'var(--slate-500)' }}>
-                  AI-powered analysis from global financial sources
-                </p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="apple-grid gap-6">
                 {filteredDeals
                   .sort((a, b) => {
                     // Sort by upvotes first, then by date
@@ -454,86 +446,70 @@ export default function Home() {
                   })
                   .map((deal) => {
                     const { category, region, type } = categorizeArticle(deal);
-                    const categoryColor = getCategoryColor(type);
+                    const badgeClass = getCategoryBadge(type);
                     const regionFlag = getRegionFlag(region);
                     
                     return (
-                      <article key={deal.id} className="card-elevated rounded-xl group">
-                        <div className="p-8">
-                          {/* Header with badges */}
-                          <div className="flex flex-wrap items-start justify-between mb-6 gap-4">
-                            <div className="flex-grow">
-                              <div className="flex flex-wrap items-center gap-3 mb-4">
-                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${categoryColor}`}>
-                                  {type}
-                                </span>
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium badge-private-equity">
-                                  {regionFlag} {region}
-                                </span>
-                                <span className="text-caption" style={{ color: 'var(--slate-500)' }}>
-                                  {formatDate(deal.date)}
-                                </span>
-                              </div>
-                              <h3 className="text-headline text-xl mb-3 leading-tight group-hover:opacity-80 transition-opacity" style={{ color: 'var(--dark-navy)' }}>
-                                {deal.title}
-                              </h3>
+                      <article key={deal.id} className="apple-card p-8">
+                        {/* Header */}
+                        <div className="flex justify-between items-start mb-6">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-3 mb-4">
+                              <span className={`apple-badge ${badgeClass}`}>
+                                {type}
+                              </span>
+                              <span className="apple-badge apple-badge-gray">
+                                {regionFlag} {region}
+                              </span>
+                              <span className="apple-small">
+                                {formatDate(deal.date)}
+                              </span>
                             </div>
-                            
-                            {/* Upvote button */}
-                            <div className="flex flex-col items-center">
-                              <button
-                                onClick={() => handleUpvote(deal.id)}
-                                disabled={upvoting === deal.id}
-                                className="flex flex-col items-center p-3 rounded-xl transition-all duration-200 group border border-transparent hover:bg-surface-gradient hover:shadow-bloomberg disabled:opacity-50"
-                                title="Upvote this article"
-                              >
-                                <svg className="w-6 h-6 transition-colors group-hover:opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--slate-400)' }}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                                </svg>
-                                <span className="text-sm font-semibold mt-1" style={{ color: 'var(--slate-600)' }}>
-                                  {deal.upvotes || 0}
-                                </span>
-                              </button>
-                            </div>
+                            <h3 className="apple-headline text-xl mb-3 leading-tight">
+                              {deal.title}
+                            </h3>
                           </div>
                           
-                          {/* Content */}
-                          <div className="text-body leading-relaxed mb-6" style={{ color: 'var(--slate-700)' }}>
-                            {deal.summary}
-                          </div>
-                          
-                          {/* Footer */}
-                                                      <div className="pt-6">
-                              <div className="divider mb-4"></div>
-                              <div className="flex items-center justify-between text-caption">
-                                <div className="flex items-center space-x-6">
-                                  {deal.source_url ? (
-                                    <a 
-                                      href={deal.source_url} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="font-medium transition-opacity hover:opacity-80 inline-flex items-center"
-                                      style={{ color: 'var(--primary-blue)' }}
-                                    >
-                                      📰 Read Original Article
-                                      <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                      </svg>
-                                    </a>
-                                  ) : (
-                                    <span className="font-medium" style={{ color: 'var(--slate-600)' }}>
-                                      📰 AI-Curated Intelligence
-                                    </span>
-                                  )}
-                                  <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: 'var(--slate-100)', color: 'var(--slate-600)' }}>
-                                    AI Analyzed
-                                  </span>
-                                </div>
-                                <span className="font-light" style={{ color: 'var(--slate-500)' }}>
-                                  {format(new Date(deal.created_at), 'MMM d, h:mm a')}
-                                </span>
-                              </div>
+                          {/* Upvote */}
+                          <button
+                            onClick={() => handleUpvote(deal.id)}
+                            disabled={upvoting === deal.id}
+                            className="ml-6 flex flex-col items-center p-3 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                          >
+                            <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                            </svg>
+                            <span className="apple-small font-medium">{deal.upvotes || 0}</span>
+                          </button>
+                        </div>
+                        
+                        {/* Content */}
+                        <div className="apple-body mb-6 leading-relaxed">
+                          {deal.summary}
+                        </div>
+                        
+                        {/* Footer */}
+                        <div className="pt-4 border-t border-gray-100">
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center space-x-4">
+                              {deal.source_url && (
+                                <a 
+                                  href={deal.source_url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="apple-button-ghost text-sm"
+                                >
+                                  Read Original
+                                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                </a>
+                              )}
                             </div>
+                            <span className="apple-small">
+                              {format(new Date(deal.created_at), 'MMM d, h:mm a')}
+                            </span>
+                          </div>
                         </div>
                       </article>
                     );

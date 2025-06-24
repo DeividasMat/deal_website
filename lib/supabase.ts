@@ -458,6 +458,23 @@ CREATE POLICY "Anyone can insert votes" ON votes
     console.log(`🗑️ Deleted deal with ID: ${dealId}`);
     return true;
   }
+
+  async deleteDealsByIds(dealIds: number[]): Promise<boolean> {
+    await this.ensureInitialized();
+    
+    const { error } = await this.supabase
+      .from('deals')
+      .delete()
+      .in('id', dealIds);
+
+    if (error) {
+      console.error('❌ Failed to delete deals:', error);
+      throw new Error(`Failed to delete deals: ${error.message}`);
+    }
+
+    console.log(`🗑️ Deleted ${dealIds.length} deals with IDs: ${dealIds.join(', ')}`);
+    return true;
+  }
 }
 
 let dbInstance: SupabaseDatabase | null = null;
