@@ -31,9 +31,10 @@ export async function POST() {
         console.log(`🔄 Updating article ${deal.id}: "${deal.title.substring(0, 50)}..."`);
         console.log(`   Source: "${deal.source}" → "${extractedSource}"`);
         
+        const finalUrl = extractedUrl || deal.source_url || '';
         await db.updateDealSourceUrl(
           deal.id!, 
-          extractedUrl || deal.source_url, 
+          finalUrl, 
           extractedSource
         );
         
