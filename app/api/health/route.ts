@@ -14,7 +14,12 @@ export async function GET() {
     if (supabaseConfigured) {
       try {
         const db = getSupabaseDatabase();
-        supabaseTest = await db.testConnection();
+        const result = await db.testConnection();
+        supabaseTest = {
+          success: result.success,
+          message: result.message,
+          tableCount: result.tableCount || 0
+        };
       } catch (error) {
         supabaseTest = { 
           success: false, 
