@@ -10,11 +10,7 @@
   "crons": [
     {
       "path": "/api/cron/daily-news",
-      "schedule": "0 17 * * *"
-    },
-    {
-      "path": "/api/cron/test-cron",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 16 * * *"
     }
   ]
 } 
