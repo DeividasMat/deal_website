@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
         if (candidates.length === 0) continue;
         
         // Use OpenAI to analyze similarity
-        const similarityAnalysis = await analyzeSimilarity(openaiService, article, candidates);
+        const similarityAnalysis = await analyzeSimilarity(openai, article, candidates);
         
         if (similarityAnalysis.duplicates.length > 0) {
           duplicateGroups.push({
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function analyzeSimilarity(openaiService: OpenAIService, primaryArticle: any, candidates: any[]) {
+async function analyzeSimilarity(openai: OpenAI, primaryArticle: any, candidates: any[]) {
   try {
     const prompt = `Analyze if these news articles are about the same deal/event. 
 
@@ -195,7 +195,7 @@ Respond with JSON only:
 
 Only include articles that are clearly about the same specific deal/transaction. Different companies or amounts = not duplicates.`;
 
-    const response = await openaiService['openai'].chat.completions.create({
+    const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
         { role: 'system', content: 'You are a financial news analyst that identifies duplicate articles.' },
