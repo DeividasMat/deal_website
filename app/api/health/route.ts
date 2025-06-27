@@ -52,4 +52,46 @@ export async function GET() {
       { status: 500 }
     );
   }
+}
+
+export async function POST() {
+  try {
+    const db = getSupabaseDatabase();
+    
+    // Save a test article to confirm saving works
+    const testArticle = {
+      date: new Date().toISOString().split('T')[0],
+      title: 'HEALTH TEST: Database Save Test ' + new Date().getTime(),
+      summary: 'This is a health test article to verify database saving is working correctly. **Test data** should save successfully.',
+      content: 'Test content for health check article verification',
+      source: 'Health Check',
+      source_url: 'https://example.com/health-test',
+      category: 'Health Test'
+    };
+    
+    const savedId = await db.saveDeal(testArticle);
+    const allDeals = await db.getAllDeals();
+    
+    return NextResponse.json({
+      status: 'healthy',
+      message: 'Health check with test article save completed',
+      timestamp: new Date().toISOString(),
+      testArticle: {
+        saved: true,
+        id: savedId,
+        title: testArticle.title
+      },
+      database: {
+        totalArticles: allDeals.length,
+        testSaveWorking: true
+      }
+    });
+    
+  } catch (error) {
+    return NextResponse.json({
+      status: 'error',
+      message: 'Health check test save failed',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
 } 
