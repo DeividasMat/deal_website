@@ -46,38 +46,47 @@ export class PerplexityService {
       day: 'numeric' 
     });
 
-    console.log(`🔍 Starting search for ${formattedDate} (${date})`);
+    // Create a date range to search (3 days back and 1 day forward for flexibility)
+    const endDate = new Date(targetDate);
+    endDate.setDate(endDate.getDate() + 1);
+    const startDate = new Date(targetDate);
+    startDate.setDate(startDate.getDate() - 3);
+    
+    const formattedStartDate = startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+    const formattedEndDate = endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+    console.log(`🔍 Starting search for private credit news from ${formattedStartDate} to ${formattedEndDate} (target date: ${date})`);
 
     // Focus on the most important private credit news
     const searches = [
       {
         category: 'Deal Activity',
         queries: [
-          `Find private credit lending deals announced on ${formattedDate}. Search for: lenders providing credit facilities to companies, direct lending transactions, asset-based lending deals, unitranche financing, mezzanine loans. Include lender names, borrower companies, loan amounts, and deal purposes.`,
-          `Search for private market debt transactions from ${formattedDate}. Include: acquisition financing, LBO debt, refinancing deals, working capital facilities, equipment financing. Focus on specific company names and transaction amounts.`,
-          `Find credit facility announcements and term loan signings on ${formattedDate}. Include: revolving credit facilities, term loans, bridge financing, distressed debt deals. Must include borrower names and facility amounts.`,
-          `Search for alternative lending deals on ${formattedDate}. Include: specialty finance transactions, factoring deals, invoice financing, supply chain financing. Focus on non-bank lenders and fintech companies providing credit.`,
-          `Find private debt restructuring and special situations deals from ${formattedDate}. Include: NPL acquisitions, DIP financing, rescue financing, turnaround loans. Must have specific company names and amounts.`
+          `Find private credit lending deals announced between ${formattedStartDate} and ${formattedEndDate}. Search for: lenders providing credit facilities to companies, direct lending transactions, asset-based lending deals, unitranche financing, mezzanine loans. Include lender names, borrower companies, loan amounts, and deal purposes.`,
+          `Search for private market debt transactions from ${formattedStartDate} to ${formattedEndDate}. Include: acquisition financing, LBO debt, refinancing deals, working capital facilities, equipment financing. Focus on specific company names and transaction amounts.`,
+          `Find credit facility announcements and term loan signings between ${formattedStartDate} and ${formattedEndDate}. Include: revolving credit facilities, term loans, bridge financing, distressed debt deals. Must include borrower names and facility amounts.`,
+          `Search for alternative lending deals from ${formattedStartDate} to ${formattedEndDate}. Include: specialty finance transactions, factoring deals, invoice financing, supply chain financing. Focus on non-bank lenders and fintech companies providing credit.`,
+          `Find private debt restructuring and special situations deals between ${formattedStartDate} and ${formattedEndDate}. Include: NPL acquisitions, DIP financing, rescue financing, turnaround loans. Must have specific company names and amounts.`
         ]
       },
       {
         category: 'Fund Raised',
         queries: [
-          `Find private credit fund launches and closings announced on ${formattedDate}. Search for: direct lending funds, private debt funds, credit opportunity funds. Include fund managers, target sizes, actual amounts raised, and investor types.`,
-          `Search for private equity credit fund raises from ${formattedDate}. Include: Apollo, Blackstone, KKR, Ares, Oaktree, Blue Owl, Golub Capital, Monroe Capital fund announcements. Must include fund sizes and strategies.`,
-          `Find BDC capital raises and CLO issuances announced on ${formattedDate}. Include: business development company equity raises, debt issuances, CLO pricing, and manager details.`,
-          `Search for specialty finance fund launches on ${formattedDate}. Include: distressed debt funds, mezzanine funds, real estate credit funds, infrastructure debt funds. Focus on first closings and final closings.`,
-          `Find private credit platform launches and joint ventures from ${formattedDate}. Include: new lending platforms, strategic partnerships between credit managers, platform acquisitions by private equity firms.`
+          `Find private credit fund launches and closings announced between ${formattedStartDate} and ${formattedEndDate}. Search for: direct lending funds, private debt funds, credit opportunity funds. Include fund managers, target sizes, actual amounts raised, and investor types.`,
+          `Search for private equity credit fund raises from ${formattedStartDate} to ${formattedEndDate}. Include: Apollo, Blackstone, KKR, Ares, Oaktree, Blue Owl, Golub Capital, Monroe Capital fund announcements. Must include fund sizes and strategies.`,
+          `Find BDC capital raises and CLO issuances announced between ${formattedStartDate} and ${formattedEndDate}. Include: business development company equity raises, debt issuances, CLO pricing, and manager details.`,
+          `Search for specialty finance fund launches from ${formattedStartDate} to ${formattedEndDate}. Include: distressed debt funds, mezzanine funds, real estate credit funds, infrastructure debt funds. Focus on first closings and final closings.`,
+          `Find private credit platform launches and joint ventures between ${formattedStartDate} and ${formattedEndDate}. Include: new lending platforms, strategic partnerships between credit managers, platform acquisitions by private equity firms.`
         ]
       },
       {
         category: 'Market News',
         queries: [
-          `Find private credit market data and trends announced on ${formattedDate}. Include: default rates, spread movements, dry powder levels, deployment rates. Must have specific data points and sources.`,
-          `Search for regulatory news affecting private credit on ${formattedDate}. Include: new regulations, compliance updates, regulatory guidance affecting direct lenders and private debt funds.`,
-          `Find institutional investor allocation news on ${formattedDate}. Include: pension funds, insurance companies, endowments allocating to private credit. Must have specific allocation amounts and strategies.`,
-          `Search for private credit industry consolidation news from ${formattedDate}. Include: manager acquisitions, platform mergers, strategic partnerships. Focus on transaction values and strategic rationale.`,
-          `Find credit rating actions and portfolio performance news on ${formattedDate}. Include: rating agency actions on private companies, portfolio company updates, credit quality trends.`
+          `Find private credit market data and trends announced between ${formattedStartDate} and ${formattedEndDate}. Include: default rates, spread movements, dry powder levels, deployment rates. Must have specific data points and sources.`,
+          `Search for regulatory news affecting private credit from ${formattedStartDate} to ${formattedEndDate}. Include: new regulations, compliance updates, regulatory guidance affecting direct lenders and private debt funds.`,
+          `Find institutional investor allocation news between ${formattedStartDate} and ${formattedEndDate}. Include: pension funds, insurance companies, endowments allocating to private credit. Must have specific allocation amounts and strategies.`,
+          `Search for private credit industry consolidation news from ${formattedStartDate} to ${formattedEndDate}. Include: manager acquisitions, platform mergers, strategic partnerships. Focus on transaction values and strategic rationale.`,
+          `Find credit rating actions and portfolio performance news between ${formattedStartDate} and ${formattedEndDate}. Include: rating agency actions on private companies, portfolio company updates, credit quality trends.`
         ]
       }
     ];
@@ -334,8 +343,8 @@ export class PerplexityService {
               content: `You are a financial news analyst specializing in private credit markets. For ${category}:
 
               CRITICAL REQUIREMENTS:
-              1. Find REAL, SPECIFIC news from the EXACT requested date
-              2. ONLY include news that has a clear publication date
+              1. Find REAL, SPECIFIC recent private credit news from the requested time period
+              2. Include news with clear publication dates from the past few days
               3. Include exact company names, deal amounts, and transaction details
               4. MUST provide source URLs whenever possible - this is critical for verification
               5. Focus on factual announcements, not general market commentary
@@ -346,10 +355,12 @@ export class PerplexityService {
                  - DIRECT article URL (essential for credibility)
                  - Brief summary of significance
 
-              IMPORTANT DATE REQUIREMENT:
-              - ONLY include news that was published on the specific date requested
-              - If no news exists for that exact date, clearly state "No news found for this specific date"
-              - Do not include general market commentary or older news
+              FLEXIBLE DATE APPROACH:
+              - Include recent private credit news from the specified date range
+              - Focus on the most recent and relevant announcements
+              - If limited news for exact dates, include nearby recent announcements
+              - Prioritize newer content over older content
+              - Always specify the actual publication date for each item
 
               FORMAT EACH NEWS ITEM EXACTLY AS:
               • [HEADLINE] - [Company/Fund Name] [Deal/Announcement Details]
