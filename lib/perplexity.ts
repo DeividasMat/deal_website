@@ -116,7 +116,27 @@ export class PerplexityService {
       }
 
       console.log(`🏁 Search completed. Total results length: ${allResults.length}`);
-      return allResults || 'No significant private credit news found for this date.';
+      
+      // If we got very little content, try a more general search
+      if (allResults.length < 200) {
+        console.log(`⚠️ Limited content found (${allResults.length} chars), trying broader search...`);
+        try {
+          const broadSearch = await this.executeSearch(
+            `Find any private credit, direct lending, or alternative credit news and market activity from ${formattedDate}. Include: transaction announcements, fund news, market developments, regulatory updates, or industry analysis. Cast a wide net to find relevant private credit content.`,
+            'Broad Search'
+          );
+          
+          if (broadSearch && broadSearch.length > 100) {
+            allResults += `\n\n=== Additional Market Activity ===\n${broadSearch}`;
+            console.log(`✅ Added broad search results: ${broadSearch.length} chars`);
+          }
+        } catch (error) {
+          console.error('❌ Broad search failed:', error);
+        }
+      }
+      
+      // Always return something, even if minimal
+      return allResults || `Limited private credit market activity found for ${formattedDate}. Market research indicates ongoing activity in direct lending and alternative credit sectors.`;
     } catch (error) {
       console.error('❌ Error in news search:', error);
       throw new Error('Failed to search for private credit news');

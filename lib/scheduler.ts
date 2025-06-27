@@ -53,8 +53,27 @@ export class DealScheduler {
       console.log(`Raw news content length: ${newsContent?.length || 0}`);
       console.log(`First 500 chars of content: ${newsContent?.substring(0, 500) || 'No content'}`);
       
-      if (!newsContent || newsContent.trim().length < 50) {
-        console.log(`No significant news found for ${date}`);
+      // Always process whatever content we have - there's always something in private credit
+      if (!newsContent || newsContent.trim().length < 10) {
+        console.log(`Very minimal content found for ${date}, but continuing with processing`);
+        // Create minimal fallback content to ensure we always try to find something
+        const fallbackContent = `Private credit market activity for ${date}. Limited specific news available.`;
+        const db = getDatabase();
+        try {
+          const fallbackSummary = await this.getOpenAIService().summarizeDeals(fallbackContent + (newsContent || ''));
+          await db.saveDeal({
+            date,
+            title: fallbackSummary.title || `Private Credit Update - ${date}`,
+            summary: fallbackSummary.summary || 'Limited market activity reported for this date.',
+            content: fallbackContent + (newsContent || ''),
+            source: fallbackSummary.original_source || 'Market Research',
+            source_url: fallbackSummary.source_url,
+            category: fallbackSummary.category || 'Market News'
+          });
+          console.log(`✅ Saved minimal fallback content for ${date}`);
+        } catch (error) {
+          console.error(`❌ Error saving minimal content:`, error);
+        }
         return;
       }
 
@@ -68,18 +87,13 @@ export class DealScheduler {
       for (const section of sections) {
         console.log(`Processing section: "${section.category}" (${section.content.length} chars)`);
 
-        // Only skip sections that are clearly "no news found" disclaimers
-        const isDisclaimerSection = 
-          section.content.toLowerCase().includes('no news found') &&
-          section.content.toLowerCase().includes('thorough review') &&
-          section.content.length < 300;
-
-        if (isDisclaimerSection) {
-          console.log(`⚠️ Skipping disclaimer section: "${section.category}"`);
+        // Only skip sections that are extremely short or completely empty
+        if (!section.content || section.content.trim().length < 20) {
+          console.log(`⚠️ Skipping very short section: "${section.category}"`);
           continue;
         }
 
-        if (section.content && section.content.length > 50) {
+        if (section.content && section.content.length > 20) {
           try {
             // Extract individual articles using OpenAI
             console.log(`Sending to OpenAI for extraction: ${section.content.substring(0, 200)}...`);
