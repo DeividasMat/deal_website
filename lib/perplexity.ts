@@ -46,47 +46,38 @@ export class PerplexityService {
       day: 'numeric' 
     });
 
-    // Create a date range to search (3 days back and 1 day forward for flexibility)
-    const endDate = new Date(targetDate);
-    endDate.setDate(endDate.getDate() + 1);
-    const startDate = new Date(targetDate);
-    startDate.setDate(startDate.getDate() - 3);
-    
-    const formattedStartDate = startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-    const formattedEndDate = endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-
-    console.log(`🔍 Starting search for private credit news from ${formattedStartDate} to ${formattedEndDate} (target date: ${date})`);
+    console.log(`🔍 Starting search for ${formattedDate} (${date})`);
 
     // Focus on the most important private credit news
     const searches = [
       {
         category: 'Deal Activity',
         queries: [
-          `Find private credit lending deals announced between ${formattedStartDate} and ${formattedEndDate}. Search for: lenders providing credit facilities to companies, direct lending transactions, asset-based lending deals, unitranche financing, mezzanine loans. Include lender names, borrower companies, loan amounts, and deal purposes.`,
-          `Search for private market debt transactions from ${formattedStartDate} to ${formattedEndDate}. Include: acquisition financing, LBO debt, refinancing deals, working capital facilities, equipment financing. Focus on specific company names and transaction amounts.`,
-          `Find credit facility announcements and term loan signings between ${formattedStartDate} and ${formattedEndDate}. Include: revolving credit facilities, term loans, bridge financing, distressed debt deals. Must include borrower names and facility amounts.`,
-          `Search for alternative lending deals from ${formattedStartDate} to ${formattedEndDate}. Include: specialty finance transactions, factoring deals, invoice financing, supply chain financing. Focus on non-bank lenders and fintech companies providing credit.`,
-          `Find private debt restructuring and special situations deals between ${formattedStartDate} and ${formattedEndDate}. Include: NPL acquisitions, DIP financing, rescue financing, turnaround loans. Must have specific company names and amounts.`
+          `Find private credit lending deals announced on ${formattedDate}. Search for: lenders providing credit facilities to companies, direct lending transactions, asset-based lending deals, unitranche financing, mezzanine loans. Include lender names, borrower companies, loan amounts, and deal purposes. If no deals found for exact date, include recent relevant deals from nearby dates but clearly specify actual publication dates.`,
+          `Search for private market debt transactions from ${formattedDate}. Include: acquisition financing, LBO debt, refinancing deals, working capital facilities, equipment financing. Focus on specific company names and transaction amounts. Include recent announcements if specific date has limited coverage.`,
+          `Find credit facility announcements and term loan signings on ${formattedDate}. Include: revolving credit facilities, term loans, bridge financing, distressed debt deals. Must include borrower names and facility amounts. Show recent relevant deals if exact date coverage is limited.`,
+          `Search for alternative lending deals on ${formattedDate}. Include: specialty finance transactions, factoring deals, invoice financing, supply chain financing. Focus on non-bank lenders and fintech companies providing credit. Include nearby dates if needed for comprehensive coverage.`,
+          `Find private debt restructuring and special situations deals on ${formattedDate}. Include: NPL acquisitions, DIP financing, rescue financing, turnaround loans. Must have specific company names and amounts. Include recent similar deals if specific date is limited.`
         ]
       },
       {
         category: 'Fund Raised',
         queries: [
-          `Find private credit fund launches and closings announced between ${formattedStartDate} and ${formattedEndDate}. Search for: direct lending funds, private debt funds, credit opportunity funds. Include fund managers, target sizes, actual amounts raised, and investor types.`,
-          `Search for private equity credit fund raises from ${formattedStartDate} to ${formattedEndDate}. Include: Apollo, Blackstone, KKR, Ares, Oaktree, Blue Owl, Golub Capital, Monroe Capital fund announcements. Must include fund sizes and strategies.`,
-          `Find BDC capital raises and CLO issuances announced between ${formattedStartDate} and ${formattedEndDate}. Include: business development company equity raises, debt issuances, CLO pricing, and manager details.`,
-          `Search for specialty finance fund launches from ${formattedStartDate} to ${formattedEndDate}. Include: distressed debt funds, mezzanine funds, real estate credit funds, infrastructure debt funds. Focus on first closings and final closings.`,
-          `Find private credit platform launches and joint ventures between ${formattedStartDate} and ${formattedEndDate}. Include: new lending platforms, strategic partnerships between credit managers, platform acquisitions by private equity firms.`
+          `Find private credit fund launches and closings announced on ${formattedDate}. Search for: direct lending funds, private debt funds, credit opportunity funds. Include fund managers, target sizes, actual amounts raised, and investor types. Include recent fund news if specific date has limited announcements.`,
+          `Search for private equity credit fund raises from ${formattedDate}. Include: Apollo, Blackstone, KKR, Ares, Oaktree, Blue Owl, Golub Capital, Monroe Capital fund announcements. Must include fund sizes and strategies. Show recent relevant fund activity if exact date is limited.`,
+          `Find BDC capital raises and CLO issuances announced on ${formattedDate}. Include: business development company equity raises, debt issuances, CLO pricing, and manager details. Include recent activity if specific date coverage is sparse.`,
+          `Search for specialty finance fund launches on ${formattedDate}. Include: distressed debt funds, mezzanine funds, real estate credit funds, infrastructure debt funds. Focus on first closings and final closings. Show recent relevant launches if needed.`,
+          `Find private credit platform launches and joint ventures on ${formattedDate}. Include: new lending platforms, strategic partnerships between credit managers, platform acquisitions by private equity firms. Include recent developments if specific date is limited.`
         ]
       },
       {
         category: 'Market News',
         queries: [
-          `Find private credit market data and trends announced between ${formattedStartDate} and ${formattedEndDate}. Include: default rates, spread movements, dry powder levels, deployment rates. Must have specific data points and sources.`,
-          `Search for regulatory news affecting private credit from ${formattedStartDate} to ${formattedEndDate}. Include: new regulations, compliance updates, regulatory guidance affecting direct lenders and private debt funds.`,
-          `Find institutional investor allocation news between ${formattedStartDate} and ${formattedEndDate}. Include: pension funds, insurance companies, endowments allocating to private credit. Must have specific allocation amounts and strategies.`,
-          `Search for private credit industry consolidation news from ${formattedStartDate} to ${formattedEndDate}. Include: manager acquisitions, platform mergers, strategic partnerships. Focus on transaction values and strategic rationale.`,
-          `Find credit rating actions and portfolio performance news between ${formattedStartDate} and ${formattedEndDate}. Include: rating agency actions on private companies, portfolio company updates, credit quality trends.`
+          `Find private credit market data and trends announced on ${formattedDate}. Include: default rates, spread movements, dry powder levels, deployment rates. Must have specific data points and sources. Include recent relevant market data if specific date has limited coverage.`,
+          `Search for regulatory news affecting private credit on ${formattedDate}. Include: new regulations, compliance updates, regulatory guidance affecting direct lenders and private debt funds. Show recent regulatory developments if needed.`,
+          `Find institutional investor allocation news on ${formattedDate}. Include: pension funds, insurance companies, endowments allocating to private credit. Must have specific allocation amounts and strategies. Include recent allocation news if exact date is limited.`,
+          `Search for private credit industry consolidation news on ${formattedDate}. Include: manager acquisitions, platform mergers, strategic partnerships. Focus on transaction values and strategic rationale. Show recent industry developments if specific date coverage is sparse.`,
+          `Find credit rating actions and portfolio performance news on ${formattedDate}. Include: rating agency actions on private companies, portfolio company updates, credit quality trends. Include recent rating actions if exact date has limited news.`
         ]
       }
     ];
@@ -343,24 +334,23 @@ export class PerplexityService {
               content: `You are a financial news analyst specializing in private credit markets. For ${category}:
 
               CRITICAL REQUIREMENTS:
-              1. Find REAL, SPECIFIC recent private credit news from the requested time period
-              2. Include news with clear publication dates from the past few days
-              3. Include exact company names, deal amounts, and transaction details
-              4. MUST provide source URLs whenever possible - this is critical for verification
-              5. Focus on factual announcements, not general market commentary
-              6. Each news item should include:
+              1. Find REAL, SPECIFIC private credit news for the requested date
+              2. Include exact company names, deal amounts, and transaction details
+              3. MUST provide source URLs whenever possible - this is critical for verification
+              4. Focus on factual announcements, not general market commentary
+              5. Each news item should include:
                  - Specific headline with company/fund names
                  - Key financial details (amounts, terms, etc.)
                  - Source publication name and date
                  - DIRECT article URL (essential for credibility)
                  - Brief summary of significance
 
-              FLEXIBLE DATE APPROACH:
-              - Include recent private credit news from the specified date range
-              - Focus on the most recent and relevant announcements
-              - If limited news for exact dates, include nearby recent announcements
-              - Prioritize newer content over older content
-              - Always specify the actual publication date for each item
+              SEARCH STRATEGY:
+              - Primary focus: News specifically published on the requested date
+              - If limited coverage for exact date: Include recent relevant announcements from nearby dates
+              - Always clearly specify the actual publication date for each item
+              - Prioritize credible financial news sources
+              - Include any private credit activity that would be relevant to track
 
               FORMAT EACH NEWS ITEM EXACTLY AS:
               • [HEADLINE] - [Company/Fund Name] [Deal/Announcement Details]
