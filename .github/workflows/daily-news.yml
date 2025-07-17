@@ -1,0 +1,42 @@
+name: Daily News Collection
+on:
+  schedule:
+    # Runs every day at 12:00 PM EST (5:00 PM UTC)
+    - cron: '0 17 * * *'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  fetch-news:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Daily News
+        run: |
+          echo "🕐 Starting daily news collection..."
+          
+          response=$(curl -s -w "%{http_code}" -X GET "${{ secrets.VERCEL_URL }}/api/cron/daily-news" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          
+          http_code="${response: -3}"
+          response_body="${response%???}"
+          
+          echo "HTTP Status: $http_code"
+          echo "Response: $response_body"
+          
+          if [ "$http_code" -eq 200 ]; then
+            echo "✅ Daily news collection completed successfully"
+          else
+            echo "❌ Daily news collection failed"
+            exit 1
+          fi
+
+      - name: Notify on Success
+        if: success()
+        run: |
+          echo "🎉 News collection completed at $(date)"
+          
+      - name: Notify on Failure  
+        if: failure()
+        run: |
+          echo "⚠️ News collection failed at $(date)" 
