@@ -26,7 +26,7 @@ export class OpenAIService {
     });
   }
 
-  async extractNewsArticles(newsContent: string, category: string): Promise<NewsAnalysis[]> {
+  async extractNewsArticles(newsContent: string, category: string, targetDate?: string): Promise<NewsAnalysis[]> {
     try {
       console.log(`🤖 OpenAI: Extracting articles from ${category} content (${newsContent.length} chars)`);
       
@@ -35,26 +35,27 @@ export class OpenAIService {
         messages: [
           {
             role: 'system',
-            content: `You are a financial news analyst. Extract ONLY actual news articles from the provided content.
+            content: `You are a financial news analyst specializing in private markets. Extract ONLY actual news articles about funds, companies, private equity, and private debt/credit from the provided content.
 
             CRITICAL REQUIREMENTS:
-            - ONLY extract articles about REAL, SPECIFIC deals, transactions, or announcements
-            - Each article should be about a SPECIFIC company, deal, or event with concrete details
-            - Include exact amounts, company names, and transaction details
-            - MUST extract working source URLs when available (look for https:// links in content)
-            - Extract original source publication names (Bloomberg, Reuters, etc.)
-            - Create professional, well-structured summaries for finance professionals
-            - Generate CLEAR, SPECIFIC titles that immediately explain what happened
+            - ONLY extract articles about REAL, SPECIFIC funds, companies, deals in private equity/debt
+            - STRICT DATE VALIDATION: Only include articles published exactly on ${targetDate || 'the target date'} - reject articles from any other date
+            - Focus on company profiles, fund details, investment activities
+            - Include exact company names, fund sizes, deal amounts, participants
+            - MUST extract working source URLs when available
+            - Extract original source publication names
+            - Create professional summaries highlighting private market aspects
 
             WHAT TO EXTRACT:
-            ✅ Company credit facilities, term loans, refinancing
-            ✅ Fund raises by private credit/private equity firms
-            ✅ Acquisition financing and LBO deals
-            ✅ Asset-based lending and working capital facilities
-            ✅ CLO issuances and securitizations
-            ✅ Credit rating actions on specific deals
+            ✅ Private equity fund raises, investments, exits
+            ✅ Private debt/credit facilities, direct lending
+            ✅ Company acquisitions, growth financing in private markets
+            ✅ Fund launches, closings, performance
+            ✅ Credit ratings for private companies/funds
 
             WHAT TO REJECT:
+            ❌ Any articles NOT published on ${targetDate || 'the target date'}
+            ❌ Articles from yesterday, last week, 2024, or any other date
             ❌ "No news found for this specific date"
             ❌ "After a thorough review of available sources"
             ❌ "However, here are some relevant announcements"
@@ -141,7 +142,7 @@ export class OpenAIService {
       const parsed = JSON.parse(content);
       const articles = parsed.articles || [];
       
-      // Filter out any articles that still contain unwanted content
+      // Filter out any articles that still contain unwanted content or wrong dates
       const filteredArticles = articles.filter((article: any) => {
         const title = article.title?.toLowerCase() || '';
         const summary = article.summary?.toLowerCase() || '';
@@ -159,6 +160,32 @@ export class OpenAIService {
         if (isPlaceholder) {
           console.log(`🚫 Skipping placeholder content: "${article.title}"`);
           return false;
+        }
+        
+        // Strict date validation if targetDate is provided
+        if (targetDate && article.date && article.date !== targetDate) {
+          console.log(`🚫 Skipping article with wrong date: "${article.title}" (${article.date} != ${targetDate})`);
+          return false;
+        }
+        
+        // Check if content mentions wrong years or dates
+        if (targetDate) {
+          const contentText = (title + ' ' + summary).toLowerCase();
+          const currentYear = new Date().getFullYear().toString();
+          const targetYear = targetDate.split('-')[0];
+          
+          // Skip articles mentioning years other than the target year
+          if (contentText.includes('2024') && targetYear !== '2024') {
+            console.log(`🚫 Skipping article mentioning 2024: "${article.title}"`);
+            return false;
+          }
+          
+          // Skip articles mentioning "last week", "yesterday", "previous", etc.
+          const wrongTimeReferences = ['last week', 'yesterday', 'previous month', 'earlier this month', 'last month'];
+          if (wrongTimeReferences.some(ref => contentText.includes(ref))) {
+            console.log(`🚫 Skipping article with wrong time reference: "${article.title}"`);
+            return false;
+          }
         }
         
         return true;
@@ -493,6 +520,226 @@ export class OpenAIService {
     } catch (error) {
       console.error('Error generating title:', error);
       return 'Financial Market Update';
+    }
+  }
+
+  async generateCombinedReport(sources: string[]): Promise<string> {
+    const combinedContent = sources.join('\n\n');
+    const response = await this.openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: 'Combine these search results into one comprehensive, informative report on the fund/company. Structure as: Overview, Key Details, Recent Activities, Sources.' },
+        { role: 'user', content: combinedContent }
+      ],
+    });
+    return response.choices[0].message.content || 'No report generated';
+  }
+
+  async enhanceArticle(deal: any): Promise<{ title: string; summary: string }> {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a financial news editor specializing in private credit and private equity. Your task is to enhance article titles and summaries to make them more engaging and informative.
+
+CRITICAL REQUIREMENTS:
+1. TITLE: Create a compelling, informative headline that captures the key deal details
+2. SUMMARY: Write EXACTLY 2 sentences that are informative, engaging, and capture the most important details
+3. Focus on: deal amounts, company names, strategic significance, market impact
+4. Use active voice and compelling language
+5. Include specific financial figures when available
+6. Make it newsworthy and interesting for finance professionals
+
+STYLE:
+- Professional but engaging tone
+- Specific numbers and details
+- Clear value proposition
+- Market context when relevant`
+          },
+          {
+            role: 'user',
+            content: `Enhance this private credit/equity article:
+
+ORIGINAL TITLE: ${deal.title}
+
+ORIGINAL SUMMARY: ${deal.summary}
+
+ORIGINAL CONTENT: ${deal.content.substring(0, 1000)}...
+
+Please provide:
+1. Enhanced Title: [improved title]
+2. Enhanced Summary: [exactly 2 informative sentences]`
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0.7
+      });
+
+      const content = response.choices[0].message.content || '';
+      
+      // Parse the response to extract title and summary
+      const titleMatch = content.match(/Enhanced Title:\s*(.+?)(?:\n|$)/i);
+      const summaryMatch = content.match(/Enhanced Summary:\s*(.+)/i);
+      
+      if (titleMatch && summaryMatch) {
+        return {
+          title: titleMatch[1].trim().replace(/^\[|\]$/g, ''),
+          summary: summaryMatch[1].trim().replace(/^\[|\]$/g, '')
+        };
+      }
+      
+      // Fallback: try to extract from the response differently
+      const lines = content.split('\n').filter(line => line.trim());
+      let title = '';
+      let summary = '';
+      
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].toLowerCase().includes('title') && i + 1 < lines.length) {
+          title = lines[i + 1].replace(/^\d+\.\s*/, '').trim();
+        }
+        if (lines[i].toLowerCase().includes('summary') && i + 1 < lines.length) {
+          // Get the next 1-2 lines for summary
+          summary = lines.slice(i + 1, i + 3).join(' ').replace(/^\d+\.\s*/, '').trim();
+          break;
+        }
+      }
+      
+      if (title && summary) {
+        return { title, summary };
+      }
+      
+      // Final fallback
+      throw new Error('Could not parse enhanced content');
+      
+    } catch (error) {
+      console.error('Error enhancing article:', error);
+      throw error;
+    }
+  }
+
+  async detectSemanticDuplicate(article1: any, article2: any): Promise<boolean> {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a financial news analyst. Determine if two articles are covering the SAME deal, transaction, or financial event, even if they're from different sources or worded differently.
+
+CRITICAL ANALYSIS CRITERIA:
+- Are they about the SAME company/fund/deal?
+- Are they reporting the SAME transaction or event?
+- Do they have the SAME key financial details (amounts, dates, parties)?
+- Even if sources differ, are they covering the SAME underlying story?
+
+RESPOND WITH: "DUPLICATE" or "DIFFERENT"
+
+Examples of DUPLICATES:
+- Same company raising same amount from different sources
+- Same merger/acquisition reported by different outlets
+- Same credit facility/loan with same amount and company
+
+Examples of DIFFERENT:
+- Different companies even in same industry
+- Different transaction amounts or dates
+- Different types of deals (funding vs acquisition)
+- Same company but different transactions`
+          },
+          {
+            role: 'user',
+            content: `ARTICLE 1:
+Title: ${article1.title}
+Summary: ${article1.summary}
+Source: ${article1.source}
+Date: ${article1.date}
+
+ARTICLE 2:
+Title: ${article2.title}
+Summary: ${article2.summary}
+Source: ${article2.source}
+Date: ${article2.date}
+
+Are these covering the SAME deal/transaction?`
+          }
+        ],
+        max_tokens: 50,
+        temperature: 0.1
+      });
+
+      const result = response.choices[0].message.content || '';
+      return result.toLowerCase().includes('duplicate');
+      
+    } catch (error) {
+      console.error('Error detecting semantic duplicate:', error);
+      // Default to false if there's an error
+      return false;
+    }
+  }
+
+  async extractDateFromContent(title: string, summary: string, content: string): Promise<string | null> {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a date extraction specialist. Extract the EXACT publication date from news content.
+
+CRITICAL REQUIREMENTS:
+- Extract ONLY the actual publication date of the article
+- Return date in YYYY-MM-DD format
+- If multiple dates mentioned, choose the publication date
+- If no clear publication date found, return "UNKNOWN"
+- Do NOT guess or approximate dates
+- Look for phrases like "announced today", "reported yesterday", "published on", etc.
+
+COMMON DATE PATTERNS:
+- "July 14, 2025" → 2025-07-14
+- "14 July 2025" → 2025-07-14
+- "2025-07-14" → 2025-07-14
+- "July 14th, 2025" → 2025-07-14
+
+Return ONLY the date in YYYY-MM-DD format or "UNKNOWN".`
+          },
+          {
+            role: 'user',
+            content: `Extract the publication date from this article:
+
+TITLE: ${title}
+
+SUMMARY: ${summary}
+
+CONTENT: ${content ? content.substring(0, 1000) : 'No content available'}...
+
+Return ONLY the date in YYYY-MM-DD format or "UNKNOWN".`
+          }
+        ],
+        max_tokens: 50,
+        temperature: 0.1
+      });
+
+      const result = response.choices[0].message.content?.trim();
+      
+      if (result === 'UNKNOWN') {
+        return null;
+      }
+      
+      // Validate the date format
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+      if (result && datePattern.test(result)) {
+        const date = new Date(result);
+        if (!isNaN(date.getTime())) {
+          return result;
+        }
+      }
+      
+      return null;
+      
+    } catch (error) {
+      console.log(`⚠️ Error extracting date from content: ${error}`);
+      return null;
     }
   }
 } 

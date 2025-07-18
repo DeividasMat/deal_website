@@ -37,8 +37,8 @@ export async function GET() {
     
     return NextResponse.json({
       status: 'active',
-      cronSchedule: '0 0 * * * (midnight UTC daily)',
-      description: 'Collects private credit deals for the day that just ended',
+      cronSchedule: '0 17 * * * (5 PM UTC daily)',
+      description: 'Collects private credit deals daily at 5 PM UTC',
       currentTime: new Date().toISOString(),
       currentTimeUTC: format(new Date(), 'yyyy-MM-dd HH:mm:ss') + ' UTC',
       
@@ -68,8 +68,8 @@ export async function GET() {
       } : null,
       
       nextScheduledRun: {
-        description: 'Next midnight UTC (00:00)',
-        timeUntilNext: calculateTimeUntilMidnight()
+        description: 'Next 5 PM UTC (17:00)',
+        timeUntilNext: calculateTimeUntilNext5PM()
       },
       
       endpoints: {
@@ -88,12 +88,19 @@ export async function GET() {
   }
 }
 
-function calculateTimeUntilMidnight(): string {
+function calculateTimeUntilNext5PM(): string {
   const now = new Date();
-  const midnight = new Date(now);
-  midnight.setUTCHours(24, 0, 0, 0); // Next midnight UTC
+  const next5PM = new Date(now);
   
-  const diff = midnight.getTime() - now.getTime();
+  // Set to 5 PM UTC today
+  next5PM.setUTCHours(17, 0, 0, 0);
+  
+  // If it's already past 5 PM today, set to 5 PM tomorrow
+  if (now.getTime() >= next5PM.getTime()) {
+    next5PM.setUTCDate(next5PM.getUTCDate() + 1);
+  }
+  
+  const diff = next5PM.getTime() - now.getTime();
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
   

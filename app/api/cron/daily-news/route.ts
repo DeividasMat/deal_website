@@ -12,59 +12,48 @@ export async function GET(request: NextRequest) {
     const hasPerplexity = !!process.env.PERPLEXITY_API_KEY;
     const hasOpenAI = !!process.env.OPENAI_API_KEY;
     const hasSupabase = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const isVercel = !!process.env.VERCEL;
     
-    console.log('Environment check:', { hasSecret, hasPerplexity, hasOpenAI, hasSupabase });
+    console.log('Environment check:', { hasSecret, hasPerplexity, hasOpenAI, hasSupabase, isVercel });
     
-    // Verify this is actually a cron request (but only if CRON_SECRET is set)
-    if (hasSecret) {
+    // For Vercel cron jobs, skip CRON_SECRET verification (Vercel handles authentication)
+    // For manual/external calls, verify CRON_SECRET if it's set
+    if (hasSecret && !isVercel) {
       const authHeader = request.headers.get('authorization');
       if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        console.log('❌ Unauthorized cron request - wrong/missing auth header');
-        console.log('Expected: Bearer [CRON_SECRET]');
-        console.log('Received:', authHeader ? 'Bearer [REDACTED]' : 'No authorization header');
+        console.log('❌ Unauthorized: Invalid or missing authorization header');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
       console.log('✅ Authorization verified');
+    } else if (isVercel) {
+      console.log('✅ Vercel cron - using built-in authentication');
     } else {
-      console.log('⚠️ No CRON_SECRET set - running without authorization check');
+      console.log('⚠️ No CRON_SECRET set - running without authorization');
     }
-
-    // Check if we have required API keys
-    if (!hasPerplexity) {
-      console.log('❌ Missing PERPLEXITY_API_KEY');
+    
+    if (!hasPerplexity || !hasOpenAI || !hasSupabase) {
+      console.log('❌ Missing required environment variables');
       return NextResponse.json({ 
-        success: false, 
-        error: 'Missing PERPLEXITY_API_KEY environment variable' 
+        error: 'Missing required environment variables',
+        missing: {
+          perplexity: !hasPerplexity,
+          openai: !hasOpenAI,
+          supabase: !hasSupabase
+        }
       }, { status: 500 });
     }
 
-    if (!hasOpenAI) {
-      console.log('❌ Missing OPENAI_API_KEY');
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Missing OPENAI_API_KEY environment variable' 
-      }, { status: 500 });
-    }
-
-    if (!hasSupabase) {
-      console.log('❌ Missing NEXT_PUBLIC_SUPABASE_URL');
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Missing NEXT_PUBLIC_SUPABASE_URL environment variable' 
-      }, { status: 500 });
-    }
-
+    // Calculate the date to fetch news for (current day)
+    const today = new Date();
+    const targetDate = format(today, 'yyyy-MM-dd');
+    
+    console.log('📅 Fetching news for date:', targetDate);
+    
+    // Get scheduler and run news collection
     const scheduler = getScheduler();
     
-    // Get yesterday's date for news collection
-    const yesterday = subDays(new Date(), 1);
-    const dateStr = format(yesterday, 'yyyy-MM-dd');
-    
-    console.log(`📅 Collecting news for: ${dateStr}`);
-    
-    // Fetch news for yesterday
     console.log('📰 Starting news fetch...');
-    await scheduler.fetchAndProcessDeals(dateStr);
+    await scheduler.fetchAndProcessDeals(targetDate);
     console.log('✅ News fetch completed');
     
     // Clean up duplicates after fetching
@@ -72,33 +61,24 @@ export async function GET(request: NextRequest) {
     const duplicatesRemoved = await scheduler.runDuplicateCleanup();
     console.log(`🗑️ Removed ${duplicatesRemoved} duplicate articles`);
     
-    console.log(`✅ Daily cron completed successfully at ${new Date().toISOString()}`);
+    console.log('✅ Daily news collection completed');
     
     return NextResponse.json({
       success: true,
       message: 'Daily news collection completed',
-      date: dateStr,
+      date: targetDate,
       duplicatesRemoved,
       timestamp: new Date().toISOString(),
       executionTime: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
-      environment: {
-        hasSecret,
-        hasPerplexity,
-        hasOpenAI,
-        hasSupabase
-      }
+      trigger: 'vercel-cron'
     });
-
-  } catch (error) {
-    console.error('❌ Error in daily cron job:', error);
-    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     
+  } catch (error) {
+    console.error('❌ Daily cron error:', error);
     return NextResponse.json({
-      success: false,
       error: 'Daily news collection failed',
       message: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString(),
-      stack: error instanceof Error ? error.stack : undefined
+      timestamp: new Date().toISOString()
     }, { status: 500 });
   }
 }

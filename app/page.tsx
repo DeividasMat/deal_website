@@ -4,16 +4,16 @@ import { useState, useEffect } from 'react';
 import { format, isToday, isYesterday, isThisWeek } from 'date-fns';
 
 interface Deal {
-  id: number;
+  id?: number;
   date: string;
   title: string;
   summary: string;
   content: string;
   source: string;
   source_url?: string;
-  category?: string;
+  category: string;
   upvotes?: number;
-  created_at: string;
+  created_at?: string;
 }
 
 // Enhanced categorization logic
@@ -113,7 +113,7 @@ export default function Home() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [filteredDeals, setFilteredDeals] = useState<Deal[]>([]);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
-  const [selectedDateRange, setSelectedDateRange] = useState<string>('all');
+  const [selectedDateRange, setSelectedDateRange] = useState<string>('today');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [loading, setLoading] = useState(false);
@@ -122,7 +122,7 @@ export default function Home() {
 
   // Load all deals and check API status on component mount
   useEffect(() => {
-    loadAllDeals();
+    handleDateRangeChange('today');
     loadAvailableDates();
     checkApiStatus();
   }, []);
@@ -158,9 +158,17 @@ export default function Home() {
       const response = await fetch('/api/deals/all');
       const data = await response.json();
       
-      // Remove duplicates based on title similarity
-      const uniqueDeals = removeDuplicates(data.deals || []);
-      setDeals(uniqueDeals);
+      // Get all deals and filter by today by default
+      const allDeals = data.deals || [];
+      
+      // Filter by today's date by default
+      const todayDeals = allDeals.filter((deal: Deal) => isToday(new Date(deal.date)));
+      
+      // Remove duplicates and sort by date
+      const uniqueDeals = removeDuplicatesAggressive(todayDeals);
+      const sortedDeals = uniqueDeals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      setDeals(sortedDeals);
     } catch (error) {
       console.error('Error loading all deals:', error);
       setDeals([]);
@@ -169,24 +177,36 @@ export default function Home() {
     }
   };
 
-  // Enhanced duplicate removal
-  const removeDuplicates = (deals: Deal[]): Deal[] => {
+  // Aggressive duplicate removal - remove duplicates even from different sources
+  const removeDuplicatesAggressive = (deals: Deal[]): Deal[] => {
     const seen = new Map<string, Deal>();
     
     deals.forEach(deal => {
+      // More aggressive normalization
       const normalizedTitle = deal.title.toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/\b(inc|ltd|llc|corp|company|fund|capital|management|group)\b/g, '')
+        .trim();
+      
+      // Also check for similar content in summary
+      const normalizedSummary = deal.summary.toLowerCase()
         .replace(/[^\w\s]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
       
-      // Keep the one with more upvotes or more recent
-      if (!seen.has(normalizedTitle)) {
-        seen.set(normalizedTitle, deal);
+      const key = normalizedTitle;
+      
+      // Keep the one with more content, higher upvotes, or more recent
+      if (!seen.has(key)) {
+        seen.set(key, deal);
       } else {
-        const existing = seen.get(normalizedTitle)!;
-        if ((deal.upvotes || 0) > (existing.upvotes || 0) || 
-            new Date(deal.created_at) > new Date(existing.created_at)) {
-          seen.set(normalizedTitle, deal);
+        const existing = seen.get(key)!;
+        const dealScore = (deal.upvotes || 0) + deal.summary.length + (new Date(deal.date).getTime() / 1000000);
+        const existingScore = (existing.upvotes || 0) + existing.summary.length + (new Date(existing.date).getTime() / 1000000);
+        
+        if (dealScore > existingScore) {
+          seen.set(key, deal);
         }
       }
     });
@@ -196,69 +216,93 @@ export default function Home() {
 
   const filterDeals = () => {
     let filtered = [...deals];
-    
-    // Category filter
+
+    // Filter by category
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(deal => {
         const { type } = categorizeArticle(deal);
         return type === selectedCategory;
       });
     }
-    
-    // Region filter
+
+    // Filter by region
     if (selectedRegion !== 'all') {
       filtered = filtered.filter(deal => {
         const { region } = categorizeArticle(deal);
         return region === selectedRegion;
       });
     }
-    
+
     setFilteredDeals(filtered);
   };
 
-  const loadDealsByDateRange = async (dateRange: string) => {
-    if (dateRange === 'all') {
-      loadAllDeals();
-      return;
-    }
-    
+  const handleDateRangeChange = async (range: string) => {
+    setSelectedDateRange(range);
     setLoading(true);
+
     try {
-      const response = await fetch(`/api/deals?dateRange=${dateRange}`);
+      const response = await fetch('/api/deals/all');
       const data = await response.json();
-      const uniqueDeals = removeDuplicates(data.deals || []);
-      setDeals(uniqueDeals);
-    } catch (error) {
-      console.error('Error loading deals:', error);
-      setDeals([]);
+      const allDeals = data.deals || [];
+      
+      const now = new Date();
+      let filteredByDate = allDeals;
+      
+      switch (range) {
+        case 'today':
+          filteredByDate = allDeals.filter((deal: Deal) => isToday(new Date(deal.date)));
+          break;
+        case 'yesterday':
+          filteredByDate = allDeals.filter((deal: Deal) => isYesterday(new Date(deal.date)));
+          break;
+        case '2days':
+          const twoDaysAgo = new Date();
+          twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+          filteredByDate = allDeals.filter((deal: Deal) => new Date(deal.date) >= twoDaysAgo);
+          break;
+        case 'week':
+          filteredByDate = allDeals.filter((deal: Deal) => isThisWeek(new Date(deal.date)));
+          break;
+        case 'lastweek':
+          const weekAgo = new Date();
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          filteredByDate = allDeals.filter((deal: Deal) => new Date(deal.date) >= weekAgo);
+          break;
+        case 'all':
+        default:
+          // Show newest 100 for "all time"
+          filteredByDate = allDeals.slice(0, 100);
+          break;
+      }
+      
+      // Remove duplicates and sort
+      const uniqueDeals = removeDuplicatesAggressive(filteredByDate);
+      const sortedDeals = uniqueDeals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      setDeals(sortedDeals);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpvote = async (articleId: number) => {
-    if (upvoting === articleId) return;
+  const handleUpvote = async (dealId?: number) => {
+    if (!dealId || upvoting === dealId) return;
     
-    setUpvoting(articleId);
+    setUpvoting(dealId);
     try {
       const response = await fetch('/api/deals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'upvote', articleId: articleId }),
+        body: JSON.stringify({ action: 'upvote', articleId: dealId }),
       });
 
-      const data = await response.json();
-      
-      if (data.success) {
-        setDeals(prevDeals => 
-          prevDeals.map(deal => 
-            deal.id === articleId 
-              ? { ...deal, upvotes: (deal.upvotes || 0) + 1 }
-              : deal
-          )
-        );
-      } else {
-        alert(data.message || 'Failed to vote');
+      if (response.ok) {
+        // Update local state
+        setDeals(prev => prev.map(deal => 
+          deal.id === dealId 
+            ? { ...deal, upvotes: (deal.upvotes || 0) + 1 }
+            : deal
+        ));
       }
     } catch (error) {
       console.error('Error upvoting:', error);
@@ -267,24 +311,15 @@ export default function Home() {
     }
   };
 
-  const handleDateRangeChange = (dateRange: string) => {
-    setSelectedDateRange(dateRange);
-    loadDealsByDateRange(dateRange);
+  // Show only date, no time
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    if (isToday(date)) return 'Today';
+    if (isYesterday(date)) return 'Yesterday';
+    return format(date, 'MMM d, yyyy');
   };
 
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      if (isToday(date)) return 'Today';
-      if (isYesterday(date)) return 'Yesterday';
-      if (isThisWeek(date)) return format(date, 'EEEE');
-      return format(date, 'MMM d, yyyy');
-    } catch {
-      return dateString;
-    }
-  };
-
-  // Get unique categories and regions from current deals
+  // Get unique categories and regions for filters
   const categories = Array.from(new Set(deals.map(deal => categorizeArticle(deal).type))).sort();
   const regions = Array.from(new Set(deals.map(deal => categorizeArticle(deal).region))).sort();
 
@@ -355,6 +390,7 @@ export default function Home() {
           <div className="apple-card p-6">
             <div className="mb-6">
               <h2 className="apple-headline text-lg mb-1">Filters</h2>
+              <p className="apple-caption">Showing articles from last 2 days</p>
             </div>
             
             <div className="apple-grid apple-grid-3">
@@ -366,10 +402,12 @@ export default function Home() {
                   onChange={(e) => handleDateRangeChange(e.target.value)}
                   className="apple-select w-full"
                 >
-                  <option value="all">All Time</option>
+                  <option value="2days">Last 2 Days</option>
                   <option value="today">Today</option>
                   <option value="yesterday">Yesterday</option>
                   <option value="week">This Week</option>
+                  <option value="lastweek">Last Week</option>
+                  <option value="all">All Time</option>
                 </select>
               </div>
 
@@ -535,7 +573,7 @@ export default function Home() {
                               </span>
                             </div>
                             <span className="apple-small">
-                              {format(new Date(deal.created_at), 'MMM d, h:mm a')}
+                              {deal.created_at && format(new Date(deal.created_at), 'MMM d, h:mm a')}
                             </span>
                           </div>
                         </div>

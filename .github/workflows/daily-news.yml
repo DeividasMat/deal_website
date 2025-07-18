@@ -15,19 +15,25 @@ jobs:
         run: |
           echo "🕐 Starting daily news collection..."
           
-          response=$(curl -s -w "%{http_code}" -X GET "${{ secrets.VERCEL_URL }}/api/cron/daily-news" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          # Use the production URL directly
+          VERCEL_URL="https://privatecreditpulse.net"
+          
+          response=$(curl -s -w "%{http_code}" -X GET "${VERCEL_URL}/api/cron/daily-news" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json")
           
           http_code="${response: -3}"
           response_body="${response%???}"
           
-          echo "HTTP Status: $http_code"
-          echo "Response: $response_body"
+          echo "🔗 Called: ${VERCEL_URL}/api/cron/daily-news"
+          echo "📊 HTTP Status: $http_code"
+          echo "📄 Response: $response_body"
           
           if [ "$http_code" -eq 200 ]; then
             echo "✅ Daily news collection completed successfully"
           else
-            echo "❌ Daily news collection failed"
+            echo "❌ Daily news collection failed with status $http_code"
+            echo "💬 Full response: $response_body"
             exit 1
           fi
 
@@ -39,4 +45,5 @@ jobs:
       - name: Notify on Failure  
         if: failure()
         run: |
-          echo "⚠️ News collection failed at $(date)" 
+          echo "⚠️ News collection failed at $(date)"
+          echo "🔧 Check the logs above for detailed error information" 

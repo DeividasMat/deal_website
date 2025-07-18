@@ -271,6 +271,7 @@ body {
 .apple-grid {
   display: grid;
   gap: 24px;
+  grid-template-columns: 1fr;
 }
 
 .apple-grid-2 {

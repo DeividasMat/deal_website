@@ -422,6 +422,17 @@ CREATE POLICY "Anyone can insert votes" ON votes
     return data || [];
   }
 
+  async searchDealsByTitle(title: string): Promise<Deal[]> {
+    await this.ensureInitialized();
+    const { data, error } = await this.supabase
+      .from('deals')
+      .select('*')
+      .ilike('title', `%${title}%`)
+      .order('date', { ascending: false });
+    if (error) throw new Error(`Search failed: ${error.message}`);
+    return data || [];
+  }
+
   async cleanupInvalidArticles(): Promise<number> {
     await this.ensureInitialized();
     
@@ -442,21 +453,20 @@ CREATE POLICY "Anyone can insert votes" ON votes
     return deletedCount;
   }
 
-  async deleteDeal(dealId: number): Promise<boolean> {
+  async deleteDeal(dealId: number): Promise<void> {
     await this.ensureInitialized();
     
     const { error } = await this.supabase
       .from('deals')
       .delete()
       .eq('id', dealId);
-
+      
     if (error) {
       console.error('❌ Failed to delete deal:', error);
       throw new Error(`Failed to delete deal: ${error.message}`);
     }
-
-    console.log(`🗑️ Deleted deal with ID: ${dealId}`);
-    return true;
+      
+    console.log(`🗑️ Successfully deleted deal ID: ${dealId}`);
   }
 
   async deleteDealsByIds(dealIds: number[]): Promise<boolean> {
@@ -497,6 +507,23 @@ CREATE POLICY "Anyone can insert votes" ON votes
     }
 
     console.log(`🔗 Updated deal ${dealId} with source URL: ${sourceUrl}`);
+    return true;
+  }
+
+  async updateDealDate(dealId: number, newDate: string): Promise<boolean> {
+    await this.ensureInitialized();
+    
+    const { error } = await this.supabase
+      .from('deals')
+      .update({ date: newDate })
+      .eq('id', dealId);
+
+    if (error) {
+      console.error('❌ Failed to update deal date:', error);
+      throw new Error(`Failed to update deal date: ${error.message}`);
+    }
+
+    console.log(`📅 Updated deal ${dealId} with new date: ${newDate}`);
     return true;
   }
 
