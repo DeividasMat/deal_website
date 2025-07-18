@@ -353,23 +353,200 @@ export class DealScheduler {
     console.log('🔍 Starting integrated duplicate analysis and cleanup...');
     
     try {
-      // For now, use the existing enhanced duplicate cleanup
-      // This will be expanded once the analysis table is set up
-      console.log('🧹 Running enhanced duplicate cleanup...');
+      let totalRemoved = 0;
+      
+      // Step 1: Enhanced duplicate cleanup (basic similarity)
+      console.log('🧹 Step 1: Running enhanced duplicate cleanup...');
       const enhancedResult = await this.runEnhancedDuplicateCleanup();
       console.log(`✅ Enhanced cleanup complete: ${enhancedResult} duplicates removed`);
+      totalRemoved += enhancedResult;
       
-      // In the future, this will include:
-      // 1. OpenAI-powered duplicate analysis
-      // 2. Safe deletion of high-confidence duplicates
-      // 3. Quality-based article selection
+      // Step 2: Semantic duplicate detection for recent articles
+      console.log('🔍 Step 2: Running semantic duplicate detection...');
+      const semanticResult = await this.runSemanticDuplicateCleanup();
+      console.log(`✅ Semantic cleanup complete: ${semanticResult} duplicates removed`);
+      totalRemoved += semanticResult;
       
-      return enhancedResult;
+      console.log(`📊 Total duplicates removed: ${totalRemoved}`);
+      return totalRemoved;
       
     } catch (error) {
       console.error('❌ Error in integrated duplicate cleanup:', error);
       return 0;
     }
+  }
+
+  private async runSemanticDuplicateCleanup(): Promise<number> {
+    try {
+      const db = getDatabase();
+      const openai = this.getOpenAIService();
+      
+      // Get recent articles (last 7 days) for semantic analysis
+      const recentArticles = await db.getAllDeals();
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      const articlesToCheck = recentArticles.filter(article => {
+        const articleDate = new Date(article.created_at || article.date);
+        return articleDate >= sevenDaysAgo;
+      }).slice(0, 20); // Limit to 20 most recent articles
+      
+      if (articlesToCheck.length < 2) {
+        console.log('⚠️ Not enough recent articles for semantic analysis');
+        return 0;
+      }
+      
+      console.log(`🔍 Checking ${articlesToCheck.length} recent articles for semantic duplicates...`);
+      
+      let duplicatesRemoved = 0;
+      const maxComparisons = 20; // Limit comparisons to avoid excessive API calls
+      let comparisons = 0;
+      
+      for (let i = 0; i < articlesToCheck.length && comparisons < maxComparisons; i++) {
+        for (let j = i + 1; j < articlesToCheck.length && comparisons < maxComparisons; j++) {
+          comparisons++;
+          
+          const article1 = articlesToCheck[i];
+          const article2 = articlesToCheck[j];
+          
+          // Skip if from very different dates
+          const date1 = new Date(article1.created_at || article1.date);
+          const date2 = new Date(article2.created_at || article2.date);
+          const daysDiff = Math.abs(date1.getTime() - date2.getTime()) / (1000 * 60 * 60 * 24);
+          
+          if (daysDiff > 3) continue; // Only check articles within 3 days of each other
+          
+          // Analyze semantic similarity
+          const analysis = await this.analyzeSemanticSimilarity(article1, article2);
+          
+          if (analysis.isDuplicate && analysis.similarity >= 0.8) {
+            console.log(`🔍 Found semantic duplicate: "${article1.title}" vs "${article2.title}"`);
+            
+            // Determine which to keep based on free source priority
+            const score1 = this.calculateEnhancedScore(article1);
+            const score2 = this.calculateEnhancedScore(article2);
+            
+            const deleteArticle = score1 > score2 ? article2 : article1;
+            const keepArticle = score1 > score2 ? article1 : article2;
+            
+                         try {
+               if (deleteArticle.id) {
+                 await db.deleteDeal(deleteArticle.id);
+                 duplicatesRemoved++;
+                 console.log(`✅ Removed semantic duplicate: "${deleteArticle.title}" (kept: "${keepArticle.title}")`);
+               }
+             } catch (error) {
+               console.error(`❌ Error removing semantic duplicate:`, error);
+             }
+          }
+          
+          // Small delay
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      console.log(`📊 Semantic analysis complete: ${duplicatesRemoved} duplicates removed from ${comparisons} comparisons`);
+      return duplicatesRemoved;
+      
+    } catch (error) {
+      console.error('❌ Error in semantic duplicate cleanup:', error);
+      return 0;
+    }
+  }
+
+  private async analyzeSemanticSimilarity(article1: any, article2: any): Promise<any> {
+    try {
+      // For now, use basic title comparison until we fix the OpenAI service access
+      const title1 = article1.title.toLowerCase();
+      const title2 = article2.title.toLowerCase();
+      
+      // Check if they have the same company name and transaction type
+      const words1 = title1.split(' ').filter((word: string) => word.length > 3);
+      const words2 = title2.split(' ').filter((word: string) => word.length > 3);
+      
+      const commonWords = words1.filter((word: string) => words2.includes(word));
+      const similarity = commonWords.length / Math.max(words1.length, words2.length);
+      
+      // Check for financial terms and amounts
+      const hasFinancialTerms = (title1.includes('facility') || title1.includes('credit') || title1.includes('loan')) &&
+                               (title2.includes('facility') || title2.includes('credit') || title2.includes('loan'));
+      
+      // Check for same amounts
+      const amount1 = title1.match(/\$\d+[mb]?/);
+      const amount2 = title2.match(/\$\d+[mb]?/);
+      const sameAmount = amount1 && amount2 && amount1[0] === amount2[0];
+      
+      const isDuplicate = similarity > 0.4 && hasFinancialTerms && sameAmount;
+      
+      return {
+        isDuplicate,
+        similarity: isDuplicate ? similarity : 0,
+        reason: isDuplicate ? `Same company and transaction: ${commonWords.join(', ')}` : 'Different stories'
+      };
+      
+    } catch (error) {
+      console.error('❌ Error analyzing semantic similarity:', error);
+      return { isDuplicate: false, similarity: 0, reason: 'Analysis failed' };
+    }
+  }
+
+  private calculateEnhancedScore(article: any): number {
+    let score = 0;
+    
+    // FREE SOURCE PRIORITY (highest scoring)
+    if (article.source_url) {
+      const url = article.source_url.toLowerCase();
+      
+      // FREE ACCESSIBLE SOURCES
+      if (url.includes('reuters.com') || url.includes('yahoo.com') || 
+          url.includes('marketwatch.com') || url.includes('cnbc.com') ||
+          url.includes('businesswire.com') || url.includes('prnewswire.com') ||
+          url.includes('seekingalpha.com') || url.includes('benzinga.com')) {
+        score += 50;
+      }
+      // PARTIALLY FREE
+      else if (url.includes('ft.com') || url.includes('wsj.com')) {
+        score += 30;
+      }
+      // PAID SOURCES (lower score)
+      else if (url.includes('bloomberg.com')) {
+        score += 20;
+      }
+      else if (url.startsWith('https://')) {
+        score += 25;
+      }
+    } else {
+      score -= 20; // Penalty for no URL
+    }
+    
+    // SOURCE NAME PRIORITY
+    if (article.source) {
+      const source = article.source.toLowerCase();
+      if (source.includes('reuters') || source.includes('yahoo') || 
+          source.includes('cnbc') || source.includes('marketwatch') ||
+          source.includes('ainvest')) {
+        score += 25;
+      }
+      else if (source.includes('bloomberg terminal')) {
+        score += 5; // Very low score for paid terminal
+      }
+    }
+    
+    // CONTENT QUALITY
+    if (article.title) {
+      score += Math.min(article.title.length / 8, 15);
+      if (article.title.includes('$')) score += 10;
+    }
+    
+    if (article.summary) {
+      score += Math.min(article.summary.length / 20, 20);
+      if (article.summary.includes('**')) score += 5;
+    }
+    
+    // ENGAGEMENT
+    score += (article.upvotes || 0) * 2;
+    
+    return score;
   }
 
   async scheduleDailyNews(): Promise<void> {
