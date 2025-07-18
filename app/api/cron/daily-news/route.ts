@@ -49,17 +49,15 @@ export async function GET(request: NextRequest) {
     
     console.log('📅 Fetching news for date:', targetDate);
     
-    // Get scheduler and run news collection
+    // Get scheduler and run news collection (includes integrated duplicate cleanup)
     const scheduler = getScheduler();
     
-    console.log('📰 Starting news fetch...');
+    console.log('📰 Starting news fetch with integrated duplicate cleanup...');
     await scheduler.fetchAndProcessDeals(targetDate);
-    console.log('✅ News fetch completed');
+    console.log('✅ News fetch and duplicate cleanup completed');
     
-    // Clean up duplicates after fetching
-    console.log('🧹 Cleaning up duplicate articles...');
-    const duplicatesRemoved = await scheduler.runDuplicateCleanup();
-    console.log(`🗑️ Removed ${duplicatesRemoved} duplicate articles`);
+    // Note: Duplicate cleanup is now integrated into fetchAndProcessDeals
+    const duplicatesRemoved = 0; // Placeholder for response compatibility
     
     console.log('✅ Daily news collection completed');
     

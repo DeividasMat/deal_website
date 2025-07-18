@@ -49,21 +49,13 @@ export async function POST(request: NextRequest) {
     console.log(`📅 Collecting news for: ${targetDate}`);
     console.log(`🕐 Current time: ${new Date().toISOString()}`);
     
-    // Fetch news for the target date
-    console.log('📰 Starting news fetch...');
+    // Fetch news for the target date (includes integrated duplicate cleanup)
+    console.log('📰 Starting news fetch with integrated duplicate cleanup...');
     await scheduler.fetchAndProcessDeals(targetDate);
-    console.log('✅ News fetch completed');
+    console.log('✅ News fetch and duplicate cleanup completed');
     
-    // Clean up duplicates after fetching
-    console.log('🧹 Cleaning up duplicate articles...');
-    // const duplicatesRemoved = await scheduler.runDuplicateCleanup();
-    // console.log(`🗑️ Removed ${duplicatesRemoved} duplicate articles`);
-    
-    // Clean up database duplicates with advanced AI detection
-    console.log('🧹 Running advanced database duplicate cleanup...');
-    // const { advancedDuplicateCleaner } = await import('@/lib/advanced-duplicate-cleaner');
-    // const dbCleanupResult = await advancedDuplicateCleaner.cleanDatabase();
-    // console.log(`🗑️ Advanced cleanup: removed ${dbCleanupResult.duplicatesRemoved} duplicates, kept ${dbCleanupResult.articlesKept} articles`);
+    // Note: Duplicate cleanup is now integrated into fetchAndProcessDeals workflow
+    // No need for separate cleanup steps - everything is handled automatically
     
     console.log(`✅ Manual trigger completed successfully at ${new Date().toISOString()}`);
     
