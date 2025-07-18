@@ -227,6 +227,11 @@ export class DealScheduler {
       }
 
       console.log(`Successfully processed and saved ${totalArticlesSaved} new articles for ${date} (total: ${existingDeals.length + totalArticlesSaved})`);
+      
+      // INTEGRATED DUPLICATE ANALYSIS AND CLEANUP
+      console.log('🔍 Running integrated duplicate analysis and cleanup...');
+      await this.runIntegratedDuplicateCleanup();
+      
     } catch (error) {
       console.error('Error processing news:', error);
     } finally {
@@ -341,6 +346,29 @@ export class DealScheduler {
       // Fallback to basic duplicate removal
       console.log('🔄 Falling back to basic duplicate removal...');
       return await this.removeDuplicates();
+    }
+  }
+
+  async runIntegratedDuplicateCleanup(): Promise<number> {
+    console.log('🔍 Starting integrated duplicate analysis and cleanup...');
+    
+    try {
+      // For now, use the existing enhanced duplicate cleanup
+      // This will be expanded once the analysis table is set up
+      console.log('🧹 Running enhanced duplicate cleanup...');
+      const enhancedResult = await this.runEnhancedDuplicateCleanup();
+      console.log(`✅ Enhanced cleanup complete: ${enhancedResult} duplicates removed`);
+      
+      // In the future, this will include:
+      // 1. OpenAI-powered duplicate analysis
+      // 2. Safe deletion of high-confidence duplicates
+      // 3. Quality-based article selection
+      
+      return enhancedResult;
+      
+    } catch (error) {
+      console.error('❌ Error in integrated duplicate cleanup:', error);
+      return 0;
     }
   }
 
