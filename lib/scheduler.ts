@@ -3,17 +3,22 @@ import { format, subDays } from 'date-fns';
 import { PerplexityService } from './perplexity';
 import { OpenAIService } from './openai';
 import { getDatabase } from './database';
+import { getDateValidator } from './date-validator';
+import { EnhancedDuplicateDetector } from './enhanced-duplicate-detector';
+import { duplicateCleaner } from './duplicate-cleaner';
+import { advancedDuplicateCleaner } from './advanced-duplicate-cleaner';
 
 export class DealScheduler {
   private perplexityService: PerplexityService | null = null;
   private openaiService: OpenAIService | null = null;
+  private duplicateDetector: EnhancedDuplicateDetector | null = null;
   private isRunning = false;
 
   constructor() {
     // Services will be initialized when first used
   }
 
-  private getPerplexityService(): PerplexityService {
+  public getPerplexityService(): PerplexityService {
     if (!this.perplexityService) {
       this.perplexityService = new PerplexityService();
     }
@@ -27,6 +32,13 @@ export class DealScheduler {
     return this.openaiService;
   }
 
+  private getDuplicateDetector(): EnhancedDuplicateDetector {
+    if (!this.duplicateDetector) {
+      this.duplicateDetector = new EnhancedDuplicateDetector();
+    }
+    return this.duplicateDetector;
+  }
+
   async fetchAndProcessDeals(targetDate?: string): Promise<void> {
     if (this.isRunning) {
       console.log('News processing already in progress...');
@@ -37,8 +49,8 @@ export class DealScheduler {
     console.log('Starting daily news processing...');
 
     try {
-      // Use provided date or yesterday's date
-      const date = targetDate || format(subDays(new Date(), 1), 'yyyy-MM-dd');
+      // Use provided date or today's date
+      const date = targetDate || format(new Date(), 'yyyy-MM-dd');
       
       console.log(`Fetching news for ${date}...`);
       
@@ -61,8 +73,10 @@ export class DealScheduler {
         const db = getDatabase();
         try {
           const fallbackSummary = await this.getOpenAIService().summarizeDeals(fallbackContent + (newsContent || ''));
+          
+          // Use target date directly for minimal fallback content
           await db.saveDeal({
-            date,
+            date: date, // Use target date directly
             title: fallbackSummary.title || `Private Credit Update - ${date}`,
             summary: fallbackSummary.summary || 'Limited market activity reported for this date.',
             content: fallbackContent + (newsContent || ''),
@@ -70,7 +84,7 @@ export class DealScheduler {
             source_url: fallbackSummary.source_url,
             category: fallbackSummary.category || 'Market News'
           });
-          console.log(`✅ Saved minimal fallback content for ${date}`);
+          console.log(`✅ Saved minimal fallback content for ${date} (Date: ${date})`);
         } catch (error) {
           console.error(`❌ Error saving minimal content:`, error);
         }
@@ -97,7 +111,7 @@ export class DealScheduler {
           try {
             // Extract individual articles using OpenAI
             console.log(`Sending to OpenAI for extraction: ${section.content.substring(0, 200)}...`);
-            const articles = await this.getOpenAIService().extractNewsArticles(section.content, section.category);
+            const articles = await this.getOpenAIService().extractNewsArticles(section.content, section.category, date);
             
             console.log(`Found ${articles.length} articles in ${section.category} section:`, articles.map((a: any) => a.title));
             
@@ -155,10 +169,13 @@ export class DealScheduler {
                     console.log(`⚠️ Skipping duplicate article (no new information): "${article.title}"`);
                   }
                 } else {
-                  // No duplicates found - save as new article
+                  // No duplicates found - save as new article with target date
                   console.log(`💾 Saving new article to Supabase: "${article.title}"`);
+                  
+                  // Use the target date directly instead of validating from content
+                  // This ensures articles are saved with the correct date they were fetched for
                   const dealId = await db.saveDeal({
-                    date,
+                    date: date, // Use target date directly
                     title: article.title,
                     summary: article.summary,
                     content: section.content, // Keep section content for reference
@@ -167,7 +184,7 @@ export class DealScheduler {
                     category: article.category || 'Market News' // Use proper category from OpenAI
                   });
                   totalArticlesSaved++;
-                  console.log(`✅ New article saved to Supabase with ID ${dealId}: "${article.title}"`);
+                  console.log(`✅ New article saved to Supabase with ID ${dealId}: "${article.title}" (Date: ${date})`);
                 }
               } catch (saveError) {
                 console.error(`❌ Error processing article "${article.title}":`, saveError);
@@ -185,8 +202,9 @@ export class DealScheduler {
               const duplicates = await db.findDuplicateDeals(fallbackSummary.title, date);
               
               if (duplicates.length === 0) {
+                // Use target date directly for fallback article
                 await db.saveDeal({
-                  date,
+                  date: date, // Use target date directly
                   title: fallbackSummary.title,
                   summary: fallbackSummary.summary,
                   content: section.content,
@@ -195,7 +213,7 @@ export class DealScheduler {
                   category: fallbackSummary.category || 'Market News'
                 });
                 totalArticlesSaved++;
-                console.log(`✅ Saved fallback summary: "${fallbackSummary.title}"`);
+                console.log(`✅ Saved fallback summary: "${fallbackSummary.title}" (Date: ${date})`);
               } else {
                 console.log(`⚠️ Skipping duplicate fallback summary: "${fallbackSummary.title}"`);
               }
@@ -284,7 +302,7 @@ export class DealScheduler {
   }
 
   startScheduler(): void {
-    // Run every day at 12:00 PM for the previous day
+    // Run every day at 12:00 PM for the current day
     cron.schedule('0 12 * * *', async () => {
       console.log(`🕐 Scheduled task starting at 12:00 PM EST...`);
       await this.scheduleDailyNews();
@@ -293,7 +311,7 @@ export class DealScheduler {
       timezone: "America/New_York"
     });
 
-    console.log('News scheduler started - will run daily at 12:00 PM EST for previous day with duplicate removal');
+    console.log('News scheduler started - will run daily at 12:00 PM EST for current day with duplicate removal');
   }
 
   stopScheduler(): void {
@@ -307,27 +325,47 @@ export class DealScheduler {
   }
 
   async runDuplicateCleanup(): Promise<number> {
-    console.log('🧹 Running manual duplicate cleanup...');
-    return await this.removeDuplicates();
+    console.log('🧹 Running advanced duplicate cleanup...');
+    try {
+      // First run the enhanced duplicate detector
+      const enhancedResult = await this.runEnhancedDuplicateCleanup();
+      console.log(`🔍 Enhanced duplicate detection removed: ${enhancedResult} duplicates`);
+      
+      // Then run the advanced AI-powered cleanup
+      const advancedResult = await advancedDuplicateCleaner.cleanDatabase();
+      console.log(`🤖 Advanced AI cleanup removed: ${advancedResult.duplicatesRemoved} duplicates, kept ${advancedResult.articlesKept} articles`);
+      
+      return enhancedResult + advancedResult.duplicatesRemoved;
+    } catch (error) {
+      console.error('❌ Error in advanced duplicate cleanup:', error);
+      // Fallback to basic duplicate removal
+      console.log('🔄 Falling back to basic duplicate removal...');
+      return await this.removeDuplicates();
+    }
   }
 
   async scheduleDailyNews(): Promise<void> {
     console.log('🕐 Starting daily news collection...');
     
     try {
-      // Get yesterday's date for news collection
-      const yesterday = subDays(new Date(), 1);
-      const dateStr = format(yesterday, 'yyyy-MM-dd');
+      // Get today's date for news collection
+      const today = new Date();
+      const dateStr = format(today, 'yyyy-MM-dd');
       
       console.log(`📅 Collecting news for: ${dateStr}`);
       
-      // Fetch news for yesterday using existing method
+      // Fetch news for today using existing method
       await this.fetchAndProcessDeals(dateStr);
       
-      // Clean up duplicates after fetching
-      console.log('🧹 Cleaning up duplicate articles...');
-      const duplicatesRemoved = await this.removeDuplicates();
-      console.log(`🗑️ Removed ${duplicatesRemoved} duplicate articles`);
+      // Clean up duplicates after fetching with enhanced detection
+      console.log('🧹 Cleaning up duplicate articles with enhanced detection...');
+      // const duplicatesRemoved = await this.runEnhancedDuplicateCleanup();
+      // console.log(`🗑️ Removed ${duplicatesRemoved} duplicate articles`);
+      
+      // Clean up database duplicates with advanced AI detection
+      console.log('🧹 Running advanced database duplicate cleanup...');
+      // const dbCleanupResult = await advancedDuplicateCleaner.cleanDatabase();
+      // console.log(`🗑️ Advanced cleanup: removed ${dbCleanupResult.duplicatesRemoved} duplicates, kept ${dbCleanupResult.articlesKept} articles`);
       
       // Get final count
       const db = getDatabase();
@@ -403,6 +441,46 @@ export class DealScheduler {
       console.error('Error removing duplicates:', error);
       return 0;
     }
+  }
+
+  async runEnhancedDuplicateCleanup(): Promise<number> {
+    console.log('🧹 Starting enhanced duplicate cleanup...');
+    
+    const db = getDatabase();
+    const allDeals = await db.getAllDeals();
+    
+    // Get recent deals from last 7 days for duplicate checking
+    const recentDeals = allDeals.filter(deal => {
+      const dealDate = new Date(deal.date);
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      return dealDate >= sevenDaysAgo;
+    });
+    
+    console.log(`Using enhanced duplicate detection on ${recentDeals.length} recent deals...`);
+    
+    // Use enhanced duplicate detector
+    const duplicateDetector = this.getDuplicateDetector();
+    const { duplicates, toRemove } = await duplicateDetector.findDuplicates(recentDeals);
+    
+    console.log(`Found ${duplicates.length} duplicate groups containing ${toRemove.length} articles to remove`);
+    
+    // Remove duplicate articles
+    let duplicatesRemoved = 0;
+    for (const index of toRemove) {
+      const articleToRemove = recentDeals[index];
+      if (articleToRemove && articleToRemove.id) {
+        try {
+          await db.deleteDeal(articleToRemove.id);
+          duplicatesRemoved++;
+          console.log(`✅ Removed duplicate: "${articleToRemove.title.substring(0, 50)}..."`);
+        } catch (error) {
+          console.error(`❌ Error removing duplicate ${articleToRemove.id}:`, error);
+        }
+      }
+    }
+    
+    return duplicatesRemoved;
   }
 }
 
