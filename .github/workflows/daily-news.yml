@@ -1,8 +1,10 @@
 name: Daily News Collection
 on:
   schedule:
-    # Runs every day at 5:00 PM UTC (12:00 PM EST)
-    - cron: '0 17 * * *'
+    # Run 3 times daily to catch more news throughout the day
+    - cron: '0 8 * * *'   # 8:00 AM UTC (3:00 AM EST)
+    - cron: '0 12 * * *'  # 12:00 PM UTC (7:00 AM EST) 
+    - cron: '0 17 * * *'  # 5:00 PM UTC (12:00 PM EST)
   
   # Allow manual triggering for testing
   workflow_dispatch:
@@ -35,17 +37,27 @@ jobs:
           
           if [[ "${{ github.event_name }}" == "schedule" ]]; then
             current_hour=$(date -u +%H)
-            if [[ "$current_hour" != "17" ]]; then
-              echo "⚠️ WARNING: Scheduled job running at hour $current_hour instead of expected hour 17"
-              echo "⚠️ This might indicate GitHub Actions scheduling delays"
-            else
-              echo "✅ Running at correct scheduled time (17:00 UTC)"
-            fi
+            case "$current_hour" in
+              "08") echo "✅ Running morning collection (08:00 UTC)" ;;
+              "12") echo "✅ Running midday collection (12:00 UTC)" ;;
+              "17") echo "✅ Running evening collection (17:00 UTC)" ;;
+              *) 
+                echo "⚠️ WARNING: Scheduled job running at hour $current_hour instead of expected hours 08, 12, or 17"
+                echo "⚠️ This might indicate GitHub Actions scheduling delays"
+                ;;
+            esac
           fi
 
       - name: Fetch Daily News
         run: |
-          echo "🚀 Starting private credit news collection..."
+          current_hour=$(date -u +%H)
+          case "$current_hour" in
+            "08") echo "🌅 Starting morning private credit news collection..." ;;
+            "12") echo "🌞 Starting midday private credit news collection..." ;;
+            "17") echo "🌆 Starting evening private credit news collection..." ;;
+            *) echo "🚀 Starting private credit news collection..." ;;
+          esac
+          
           echo "📡 Target: https://privatecreditpulse.net"
           echo "⏰ Collection Time: $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
           
@@ -53,7 +65,7 @@ jobs:
           response=$(curl -s -w "%{http_code}" -X GET "https://privatecreditpulse.net/api/cron/daily-news" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
-            -H "User-Agent: GitHub-Actions-CronJob" \
+            -H "User-Agent: GitHub-Actions-CronJob-${current_hour}h" \
             --connect-timeout 30 \
             --max-time 900)
           
@@ -109,14 +121,22 @@ jobs:
       - name: Success Notification
         if: success()
         run: |
-          echo "🎉 Daily news collection completed successfully!"
+          current_hour=$(date -u +%H)
+          case "$current_hour" in
+            "08") echo "🎉 Morning news collection completed successfully!" ;;
+            "12") echo "🎉 Midday news collection completed successfully!" ;;
+            "17") echo "🎉 Evening news collection completed successfully!" ;;
+            *) echo "🎉 Daily news collection completed successfully!" ;;
+          esac
+          
           echo "⏰ Completion Time: $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
-          echo "✅ Next scheduled run: Tomorrow at 17:00 UTC (5:00 PM)"
+          echo "✅ Next scheduled runs: 08:00, 12:00, 17:00 UTC daily"
           
       - name: Failure Notification  
         if: failure()
         run: |
-          echo "⚠️ Daily news collection workflow failed!"
+          current_hour=$(date -u +%H)
+          echo "⚠️ News collection workflow failed at ${current_hour}:00 UTC!"
           echo "⏰ Failure Time: $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
           echo "🔧 Please check the logs above for detailed error information"
           echo "📧 Consider manual investigation of the news collection system" 

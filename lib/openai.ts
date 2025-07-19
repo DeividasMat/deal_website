@@ -291,11 +291,15 @@ ${newsContent}`
     // Look for URLs in the content that might be associated with this article
     const urlPatterns = [
       // Standard https URLs
-      /https?:\/\/[^\s\)]+/g,
+      /https?:\/\/[^\s\)"\]]+/g,
       // URLs after "Source:" patterns
-      /Source:\s*[^|]*\|\s*(https?:\/\/[^\s\)]+)/g,
+      /Source:\s*[^|]*\|\s*(https?:\/\/[^\s\)"\]]+)/g,
       // URLs in parentheses
-      /\(https?:\/\/[^\s\)]+\)/g
+      /\(https?:\/\/[^\s\)"\]]+\)/g,
+      // URLs in brackets
+      /\[https?:\/\/[^\s\)"\]]+\]/g,
+      // URLs after "URL:" patterns
+      /URL:\s*(https?:\/\/[^\s\)"\]]+)/g
     ];
     
     // Find all URLs in content
@@ -307,42 +311,127 @@ ${newsContent}`
         foundUrls.push(...matches.map(match => {
           // Clean up the URL
           let url = match.replace(/^\(|\)$/g, ''); // Remove parentheses
+          url = url.replace(/^\[|\]$/g, ''); // Remove brackets
+          url = url.replace(/^["']|["']$/g, ''); // Remove quotes
+          
           if (url.includes('|')) {
             url = url.split('|')[1].trim(); // Get URL after pipe
           }
-          return url.replace(/[^\w:\/\-\.?&=]+$/, ''); // Remove trailing punctuation
+          if (url.includes('URL:')) {
+            url = url.replace(/^.*URL:\s*/, ''); // Remove URL: prefix
+          }
+          
+          return url.replace(/[^\w:\/\-\.?&=_~#@!$'()*+,;]+$/, ''); // Remove trailing punctuation
         }));
       }
     }
     
     if (foundUrls.length > 0) {
-      // Prefer URLs from reputable financial sources
+      console.log(`🔗 Found ${foundUrls.length} potential URLs for "${articleTitle}"`);
+      
+      // Enhanced URL validation and filtering
+      const validUrls = foundUrls.filter(url => this.isValidUrl(url));
+      
+      if (validUrls.length === 0) {
+        console.log(`⚠️ No valid URLs found for "${articleTitle}"`);
+        return undefined;
+      }
+      
+      // Prioritize URLs from reputable financial sources
       const preferredSources = [
-        'bloomberg.com',
         'reuters.com',
-        'ft.com',
+        'bloomberg.com',
+        'ft.com', 
         'wsj.com',
+        'fortune.com',
+        'businesswire.com',
+        'prnewswire.com',
+        'marketwatch.com',
+        'cnbc.com',
         'financial-news.com',
         'privateequityinternational.com',
         'creditflux.com',
-        'debtwire.com'
+        'debtwire.com',
+        'pitchbook.com',
+        'preqin.com'
       ];
       
+      // First, try to find URLs from preferred sources
       for (const source of preferredSources) {
-        const preferredUrl = foundUrls.find(url => url.includes(source));
+        const preferredUrl = validUrls.find(url => url.toLowerCase().includes(source));
         if (preferredUrl) {
-          console.log(`🔗 Found preferred URL for "${articleTitle}": ${preferredUrl}`);
+          console.log(`🔗 Selected preferred source URL: ${preferredUrl}`);
           return preferredUrl;
         }
       }
       
-      // Return first valid URL if no preferred source found
-      const firstUrl = foundUrls[0];
-      console.log(`🔗 Found URL for "${articleTitle}": ${firstUrl}`);
-      return firstUrl;
+      // If no preferred source found, return the first valid URL
+      const selectedUrl = validUrls[0];
+      console.log(`🔗 Selected URL for "${articleTitle}": ${selectedUrl}`);
+      return selectedUrl;
     }
     
     return undefined;
+  }
+
+  private isValidUrl(url: string): boolean {
+    try {
+      // Basic URL format validation
+      if (!url || typeof url !== 'string') {
+        return false;
+      }
+      
+      // Must start with http or https
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return false;
+      }
+      
+      // Must have a domain
+      if (!url.includes('.')) {
+        return false;
+      }
+      
+      // Check for common invalid patterns
+      const invalidPatterns = [
+        /^https?:\/\/\s*$/,  // Just protocol
+        /^https?:\/\/\.$/, // Just protocol and dot
+        /^https?:\/\/localhost/, // Localhost URLs
+        /^https?:\/\/127\.0\.0\.1/, // Local IP
+        /^https?:\/\/0\.0\.0\.0/, // Invalid IP
+        /\s/, // Contains whitespace
+        /[<>"]/, // Contains HTML characters
+        /^https?:\/\/[^\/]*$/, // No path and very short domain
+      ];
+      
+      for (const pattern of invalidPatterns) {
+        if (pattern.test(url)) {
+          console.log(`❌ Invalid URL pattern detected: ${url}`);
+          return false;
+        }
+      }
+      
+      // Test if URL can be parsed
+      const parsedUrl = new URL(url);
+      
+      // Domain should have at least one dot and reasonable length
+      if (parsedUrl.hostname.length < 4 || !parsedUrl.hostname.includes('.')) {
+        console.log(`❌ Invalid hostname: ${parsedUrl.hostname}`);
+        return false;
+      }
+      
+      // URL should not be too long (likely corrupted)
+      if (url.length > 2000) {
+        console.log(`❌ URL too long: ${url.length} characters`);
+        return false;
+      }
+      
+      console.log(`✅ Valid URL: ${url}`);
+      return true;
+      
+    } catch (error) {
+      console.log(`❌ URL validation failed for: ${url} - ${error}`);
+      return false;
+    }
   }
 
   private createFallbackArticles(newsContent: string, category: string): NewsAnalysis[] {
