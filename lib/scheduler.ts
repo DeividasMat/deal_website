@@ -1,5 +1,5 @@
 import * as cron from 'node-cron';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { PerplexityService } from './perplexity';
 import { OpenAIService } from './openai';
 import { getDatabase } from './database';
@@ -9,8 +9,8 @@ import { duplicateCleaner } from './duplicate-cleaner';
 import { advancedDuplicateCleaner } from './advanced-duplicate-cleaner';
 
 export class DealScheduler {
-  private perplexityService: PerplexityService | null = null;
-  private openaiService: OpenAIService | null = null;
+  private perplexityService?: PerplexityService;
+  private openaiService?: OpenAIService;
   private duplicateDetector: EnhancedDuplicateDetector | null = null;
   private isRunning = false;
 
@@ -49,7 +49,8 @@ export class DealScheduler {
     console.log('Starting daily news processing...');
 
     try {
-      // Use provided date or today's date
+      // CRITICAL FIX: Always use the target date for article dating
+      // This ensures articles get the date they were actually fetched for
       const date = targetDate || format(new Date(), 'yyyy-MM-dd');
       
       console.log(`Fetching news for ${date}...`);
@@ -74,9 +75,9 @@ export class DealScheduler {
         try {
           const fallbackSummary = await this.getOpenAIService().summarizeDeals(fallbackContent + (newsContent || ''));
           
-          // Use target date directly for minimal fallback content
+          // CRITICAL FIX: Always use target fetch date
           await db.saveDeal({
-            date: date, // Use target date directly
+            date: date, // Use target date directly - when we fetched the news
             title: fallbackSummary.title || `Private Credit Update - ${date}`,
             summary: fallbackSummary.summary || 'Limited market activity reported for this date.',
             content: fallbackContent + (newsContent || ''),
@@ -84,7 +85,7 @@ export class DealScheduler {
             source_url: fallbackSummary.source_url,
             category: fallbackSummary.category || 'Market News'
           });
-          console.log(`✅ Saved minimal fallback content for ${date} (Date: ${date})`);
+          console.log(`✅ Saved minimal fallback content for ${date} (Fetch Date: ${date})`);
         } catch (error) {
           console.error(`❌ Error saving minimal content:`, error);
         }
@@ -148,43 +149,28 @@ export class DealScheduler {
                       console.log(`🔗 Updated duplicate article ${duplicate.id} with source URL: ${article.source_url}`);
                       updatedAny = true;
                     }
-                    // Or update if we have a better source (more specific publication)
-                    else if (duplicate.source_url && article.source_url && 
-                             article.original_source && 
-                             duplicate.source === 'Perplexity + OpenAI' &&
-                             ['Bloomberg', 'Reuters', 'Financial Times', 'WSJ'].includes(article.original_source)) {
-                      await db.updateDealSourceUrl(
-                        duplicate.id!, 
-                        article.source_url, 
-                        article.original_source
-                      );
-                      console.log(`📰 Updated duplicate article ${duplicate.id} with better source: ${article.original_source}`);
-                      updatedAny = true;
-                    }
                   }
                   
-                  if (updatedAny) {
-                    console.log(`✅ Enhanced existing duplicate articles for: "${article.title}"`);
-                  } else {
-                    console.log(`⚠️ Skipping duplicate article (no new information): "${article.title}"`);
+                  if (!updatedAny) {
+                    console.log(`⚠️ Skipping duplicate: "${article.title}"`);
                   }
                 } else {
-                  // No duplicates found - save as new article with target date
+                  // CRITICAL FIX: No duplicates found - save with FETCH DATE only
                   console.log(`💾 Saving new article to Supabase: "${article.title}"`);
                   
-                  // Use the target date directly instead of validating from content
-                  // This ensures articles are saved with the correct date they were fetched for
+                  // ALWAYS use the target fetch date - never extract dates from content
+                  // This prevents articles from getting wrong dates due to content mentions
                   const dealId = await db.saveDeal({
-                    date: date, // Use target date directly
+                    date: date, // ALWAYS use target fetch date - when we found the news
                     title: article.title,
                     summary: article.summary,
                     content: section.content, // Keep section content for reference
                     source: article.original_source || 'Financial News',
                     source_url: article.source_url,
-                    category: article.category || 'Market News' // Use proper category from OpenAI
+                    category: article.category || 'Market News'
                   });
                   totalArticlesSaved++;
-                  console.log(`✅ New article saved to Supabase with ID ${dealId}: "${article.title}" (Date: ${date})`);
+                  console.log(`✅ New article saved to Supabase with ID ${dealId}: "${article.title}" (Fetch Date: ${date})`);
                 }
               } catch (saveError) {
                 console.error(`❌ Error processing article "${article.title}":`, saveError);
@@ -202,9 +188,9 @@ export class DealScheduler {
               const duplicates = await db.findDuplicateDeals(fallbackSummary.title, date);
               
               if (duplicates.length === 0) {
-                // Use target date directly for fallback article
+                // CRITICAL FIX: Always use target fetch date for fallback
                 await db.saveDeal({
-                  date: date, // Use target date directly
+                  date: date, // Use target fetch date directly
                   title: fallbackSummary.title,
                   summary: fallbackSummary.summary,
                   content: section.content,
@@ -213,7 +199,7 @@ export class DealScheduler {
                   category: fallbackSummary.category || 'Market News'
                 });
                 totalArticlesSaved++;
-                console.log(`✅ Saved fallback summary: "${fallbackSummary.title}" (Date: ${date})`);
+                console.log(`✅ Saved fallback summary: "${fallbackSummary.title}" (Fetch Date: ${date})`);
               } else {
                 console.log(`⚠️ Skipping duplicate fallback summary: "${fallbackSummary.title}"`);
               }
@@ -230,10 +216,11 @@ export class DealScheduler {
       
       // INTEGRATED DUPLICATE ANALYSIS AND CLEANUP
       console.log('🔍 Running integrated duplicate analysis and cleanup...');
-      await this.runIntegratedDuplicateCleanup();
+      const duplicatesRemoved = await this.runIntegratedDuplicateCleanup();
+      console.log(`🧹 Cleaned up ${duplicatesRemoved} duplicates during processing`);
       
     } catch (error) {
-      console.error('Error processing news:', error);
+      console.error('❌ Error in fetchAndProcessDeals:', error);
     } finally {
       this.isRunning = false;
     }
@@ -292,17 +279,16 @@ export class DealScheduler {
         });
       });
     }
-    
-    // Fallback: treat entire content as one section
-    if (sections.length === 0) {
-      console.log('Using entire content as single section');
+
+    // Fallback: Use the entire content as one section if no patterns found
+    if (sections.length === 0 && content.length > 200) {
+      console.log(`Using entire content as single section`);
       sections.push({
-        category: 'Deal Activity',
+        category: 'Private Credit News',
         content: content
       });
     }
-    
-    console.log(`Parsed sections:`, sections.map(s => `${s.category} (${s.content.length} chars)`));
+
     return sections;
   }
 

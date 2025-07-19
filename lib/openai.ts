@@ -39,12 +39,12 @@ export class OpenAIService {
 
             CRITICAL REQUIREMENTS:
             - ONLY extract articles about REAL, SPECIFIC funds, companies, deals in private equity/debt
-            - STRICT DATE VALIDATION: Only include articles published exactly on ${targetDate || 'the target date'} - reject articles from any other date
             - Focus on company profiles, fund details, investment activities
             - Include exact company names, fund sizes, deal amounts, participants
             - MUST extract working source URLs when available
             - Extract original source publication names
             - Create professional summaries highlighting private market aspects
+            - DO NOT try to extract or validate publication dates from content
 
             WHAT TO EXTRACT:
             ✅ Private equity fund raises, investments, exits
@@ -54,8 +54,6 @@ export class OpenAIService {
             ✅ Credit ratings for private companies/funds
 
             WHAT TO REJECT:
-            ❌ Any articles NOT published on ${targetDate || 'the target date'}
-            ❌ Articles from yesterday, last week, 2024, or any other date
             ❌ "No news found for this specific date"
             ❌ "After a thorough review of available sources"
             ❌ "However, here are some relevant announcements"
@@ -120,11 +118,15 @@ export class OpenAIService {
             - Use the most detailed information available
             - Keep the best source URL
 
+            IMPORTANT: DO NOT extract or validate dates from article content. The calling system will handle all date assignment.
+
             Return as JSON with "articles" array containing title, summary, category, source_url, and original_source. If no actual deals exist, return empty array.`
           },
           {
             role: 'user',
-            content: `Extract clean news articles about actual deals/transactions. Generate SUPER CLEAR, SPECIFIC titles with company names and amounts. Assign proper categories. Deduplicate similar content. Extract working URLs and source publication names:\n\n${newsContent}`
+            content: `Extract clean news articles about actual deals/transactions. Generate SUPER CLEAR, SPECIFIC titles with company names and amounts. Assign proper categories. Deduplicate similar content. Extract working URLs and source publication names:
+
+${newsContent}`
           }
         ],
         max_tokens: 4000,
@@ -142,7 +144,7 @@ export class OpenAIService {
       const parsed = JSON.parse(content);
       const articles = parsed.articles || [];
       
-      // Filter out any articles that still contain unwanted content or wrong dates
+      // Filter out only obvious placeholder/empty content - NO date filtering
       const filteredArticles = articles.filter((article: any) => {
         const title = article.title?.toLowerCase() || '';
         const summary = article.summary?.toLowerCase() || '';
@@ -162,33 +164,7 @@ export class OpenAIService {
           return false;
         }
         
-        // Strict date validation if targetDate is provided
-        if (targetDate && article.date && article.date !== targetDate) {
-          console.log(`🚫 Skipping article with wrong date: "${article.title}" (${article.date} != ${targetDate})`);
-          return false;
-        }
-        
-        // Check if content mentions wrong years or dates
-        if (targetDate) {
-          const contentText = (title + ' ' + summary).toLowerCase();
-          const currentYear = new Date().getFullYear().toString();
-          const targetYear = targetDate.split('-')[0];
-          
-          // Skip articles mentioning years other than the target year
-          if (contentText.includes('2024') && targetYear !== '2024') {
-            console.log(`🚫 Skipping article mentioning 2024: "${article.title}"`);
-            return false;
-          }
-          
-          // Skip articles mentioning "last week", "yesterday", "previous", etc.
-          const wrongTimeReferences = ['last week', 'yesterday', 'previous month', 'earlier this month', 'last month'];
-          if (wrongTimeReferences.some(ref => contentText.includes(ref))) {
-            console.log(`🚫 Skipping article with wrong time reference: "${article.title}"`);
-            return false;
-          }
-        }
-        
-        return true;
+        return true; // Accept all non-placeholder articles
       });
       
       // Enhanced deduplication - group by similar titles and merge

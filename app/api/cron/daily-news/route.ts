@@ -1,11 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getScheduler } from '@/lib/scheduler';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
+
+// Global variable to track if cron is running (simple in-memory lock)
+let isRunning = false;
+let lastRunTime: Date | null = null;
 
 export async function GET(request: NextRequest) {
+  const startTime = new Date();
+  const userAgent = request.headers.get('user-agent') || 'Unknown';
+  
   try {
-    console.log('🕐 Vercel Cron: Starting daily news collection...');
-    console.log('🕐 Cron triggered at:', new Date().toISOString());
+    console.log('🕐 CRON JOB TRIGGERED');
+    console.log('⏰ Start Time (UTC):', startTime.toISOString());
+    console.log('⏰ Start Time (Local):', startTime.toLocaleString());
+    console.log('🔧 User Agent:', userAgent);
+    console.log('🔧 Request Headers:', Object.fromEntries(request.headers.entries()));
+    
+    // SAFEGUARD: Prevent multiple simultaneous runs
+    if (isRunning) {
+      console.log('⚠️ DUPLICATE RUN PREVENTED - Cron job already in progress');
+      console.log('⚠️ Last run started at:', lastRunTime?.toISOString());
+      return NextResponse.json({ 
+        error: 'Cron job already running',
+        message: 'Another cron job is already in progress. Skipping to prevent conflicts.',
+        lastRunTime: lastRunTime?.toISOString(),
+        currentTime: startTime.toISOString()
+      }, { status: 429 });
+    }
+    
+    // Set running flag
+    isRunning = true;
+    lastRunTime = startTime;
+    
+    console.log('✅ Cron job lock acquired - proceeding with news collection');
     
     // Check environment variables
     const hasSecret = !!process.env.CRON_SECRET;
@@ -13,26 +41,36 @@ export async function GET(request: NextRequest) {
     const hasOpenAI = !!process.env.OPENAI_API_KEY;
     const hasSupabase = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
     const isVercel = !!process.env.VERCEL;
+    const vercelUrl = process.env.VERCEL_URL;
     
-    console.log('Environment check:', { hasSecret, hasPerplexity, hasOpenAI, hasSupabase, isVercel });
+    console.log('🔧 Environment check:', { 
+      hasSecret, 
+      hasPerplexity, 
+      hasOpenAI, 
+      hasSupabase, 
+      isVercel, 
+      vercelUrl: vercelUrl?.substring(0, 20) + '...' 
+    });
     
-    // For Vercel cron jobs, skip CRON_SECRET verification (Vercel handles authentication)
-    // For manual/external calls, verify CRON_SECRET if it's set
+    // Authentication check
     if (hasSecret && !isVercel) {
       const authHeader = request.headers.get('authorization');
       if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        console.log('❌ Unauthorized: Invalid or missing authorization header');
+        console.log('❌ UNAUTHORIZED: Invalid or missing authorization header');
+        console.log('❌ Expected: Bearer [CRON_SECRET]');
+        console.log('❌ Received:', authHeader?.substring(0, 20) + '...');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
-      console.log('✅ Authorization verified');
+      console.log('✅ Authorization verified via CRON_SECRET');
     } else if (isVercel) {
-      console.log('✅ Vercel cron - using built-in authentication');
+      console.log('✅ Vercel environment - using built-in authentication');
     } else {
       console.log('⚠️ No CRON_SECRET set - running without authorization');
     }
     
+    // Environment validation
     if (!hasPerplexity || !hasOpenAI || !hasSupabase) {
-      console.log('❌ Missing required environment variables');
+      console.log('❌ MISSING ENVIRONMENT VARIABLES');
       return NextResponse.json({ 
         error: 'Missing required environment variables',
         missing: {
@@ -47,41 +85,67 @@ export async function GET(request: NextRequest) {
     const today = new Date();
     const targetDate = format(today, 'yyyy-MM-dd');
     
-    console.log('📅 Fetching news for date:', targetDate);
-    
-    // Get scheduler and run news collection (includes integrated duplicate cleanup)
+    console.log('📅 Target fetch date:', targetDate);
+    console.log('🚀 Starting news collection process...');
+
+    // Get scheduler and run the daily news collection
     const scheduler = getScheduler();
-    
-    console.log('📰 Starting news fetch with integrated duplicate cleanup...');
     await scheduler.fetchAndProcessDeals(targetDate);
-    console.log('✅ News fetch and duplicate cleanup completed');
     
-    // Note: Duplicate cleanup is now integrated into fetchAndProcessDeals
-    const duplicatesRemoved = 0; // Placeholder for response compatibility
+    const endTime = new Date();
+    const durationMs = endTime.getTime() - startTime.getTime();
+    const durationMin = Math.round(durationMs / 60000 * 100) / 100;
     
-    console.log('✅ Daily news collection completed');
+    console.log('✅ CRON JOB COMPLETED SUCCESSFULLY');
+    console.log('⏰ End Time (UTC):', endTime.toISOString());
+    console.log('⏱️ Total Duration:', `${durationMin} minutes (${durationMs}ms)`);
     
-    return NextResponse.json({
+    return NextResponse.json({ 
       success: true,
-      message: 'Daily news collection completed',
-      date: targetDate,
-      duplicatesRemoved,
-      timestamp: new Date().toISOString(),
-      executionTime: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
-      trigger: 'vercel-cron'
+      message: `Daily news collection completed successfully for ${targetDate}`,
+      timing: {
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        durationMs,
+        durationMinutes: durationMin
+      },
+      targetDate,
+      userAgent,
+      environment: {
+        isVercel,
+        hasAllRequiredKeys: hasPerplexity && hasOpenAI && hasSupabase
+      }
     });
-    
+
   } catch (error) {
-    console.error('❌ Daily cron error:', error);
-    return NextResponse.json({
+    const endTime = new Date();
+    const durationMs = endTime.getTime() - startTime.getTime();
+    
+    console.error('❌ CRON JOB FAILED');
+    console.error('❌ Error:', error);
+    console.error('⏰ Failure Time (UTC):', endTime.toISOString());
+    console.error('⏱️ Failed Duration:', `${Math.round(durationMs / 60000 * 100) / 100} minutes`);
+    
+    return NextResponse.json({ 
       error: 'Daily news collection failed',
-      message: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString()
+      message: error instanceof Error ? error.message : 'Unknown error occurred',
+      timing: {
+        startTime: startTime.toISOString(),
+        failureTime: endTime.toISOString(),
+        durationMs
+      },
+      userAgent
     }, { status: 500 });
+    
+  } finally {
+    // Always release the lock
+    isRunning = false;
+    console.log('🔓 Cron job lock released');
   }
 }
 
-// Also support POST for manual triggers
+// Export POST handler as well for manual triggers
 export async function POST(request: NextRequest) {
+  console.log('📨 Manual POST trigger received - redirecting to GET handler');
   return GET(request);
 } 

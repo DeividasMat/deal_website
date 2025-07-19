@@ -1,49 +1,122 @@
 name: Daily News Collection
 on:
   schedule:
-    # Runs every day at 12:00 PM EST (5:00 PM UTC)
+    # Runs every day at 5:00 PM UTC (12:00 PM EST)
     - cron: '0 17 * * *'
   
-  # Allow manual triggering
+  # Allow manual triggering for testing
   workflow_dispatch:
+    inputs:
+      manual_run:
+        description: 'Manual run confirmation'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+        - 'false'
+        - 'true'
 
 jobs:
   fetch-news:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
+      - name: Verify Timing and Environment
+        run: |
+          echo "🕐 GitHub Actions Workflow Started"
+          echo "⏰ Current UTC Time: $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
+          echo "⏰ Current EST Time: $(TZ=America/New_York date '+%Y-%m-%d %H:%M:%S %Z')"
+          echo "🔧 Run Type: ${{ github.event_name }}"
+          
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.manual_run }}" != "true" ]]; then
+            echo "❌ Manual run not confirmed. Set manual_run to 'true' to proceed."
+            exit 1
+          fi
+          
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            current_hour=$(date -u +%H)
+            if [[ "$current_hour" != "17" ]]; then
+              echo "⚠️ WARNING: Scheduled job running at hour $current_hour instead of expected hour 17"
+              echo "⚠️ This might indicate GitHub Actions scheduling delays"
+            else
+              echo "✅ Running at correct scheduled time (17:00 UTC)"
+            fi
+          fi
+
       - name: Fetch Daily News
         run: |
-          echo "🕐 Starting daily news collection..."
+          echo "🚀 Starting private credit news collection..."
+          echo "📡 Target: https://privatecreditpulse.net"
+          echo "⏰ Collection Time: $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
           
-          # Use the production URL directly
-          VERCEL_URL="https://privatecreditpulse.net"
-          
-          response=$(curl -s -w "%{http_code}" -X GET "${VERCEL_URL}/api/cron/daily-news" \
+          # Make the API call with enhanced error handling
+          response=$(curl -s -w "%{http_code}" -X GET "https://privatecreditpulse.net/api/cron/daily-news" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -H "Content-Type: application/json")
+            -H "Content-Type: application/json" \
+            -H "User-Agent: GitHub-Actions-CronJob" \
+            --connect-timeout 30 \
+            --max-time 900)
           
           http_code="${response: -3}"
           response_body="${response%???}"
           
-          echo "🔗 Called: ${VERCEL_URL}/api/cron/daily-news"
-          echo "📊 HTTP Status: $http_code"
-          echo "📄 Response: $response_body"
+          echo "📊 HTTP Status Code: $http_code"
+          echo "📄 Response Body Length: ${#response_body} characters"
+          echo "📄 Response Preview: ${response_body:0:500}..."
           
           if [ "$http_code" -eq 200 ]; then
-            echo "✅ Daily news collection completed successfully"
+            echo "✅ Daily news collection API call successful"
+            
+            # Try to parse JSON response for additional info
+            if command -v jq &> /dev/null; then
+              echo "$response_body" | jq -r '.message // "No message field"' 2>/dev/null || echo "Response is not valid JSON"
+            fi
           else
-            echo "❌ Daily news collection failed with status $http_code"
+            echo "❌ Daily news collection failed"
             echo "💬 Full response: $response_body"
-            exit 1
+            
+            # Retry once after 30 seconds
+            echo "🔄 Retrying in 30 seconds..."
+            sleep 30
+            
+            retry_response=$(curl -s -w "%{http_code}" -X GET "https://privatecreditpulse.net/api/cron/daily-news" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              -H "Content-Type: application/json" \
+              --connect-timeout 30 \
+              --max-time 900)
+            
+            retry_code="${retry_response: -3}"
+            retry_body="${retry_response%???}"
+            
+            echo "🔄 Retry Status: $retry_code"
+            if [ "$retry_code" -eq 200 ]; then
+              echo "✅ Retry successful"
+            else
+              echo "❌ Retry also failed: $retry_body"
+              exit 1
+            fi
           fi
 
-      - name: Notify on Success
+      - name: Verify Collection Results
         if: success()
         run: |
-          echo "🎉 News collection completed at $(date)"
+          echo "🔍 Verifying news collection results..."
           
-      - name: Notify on Failure  
+          # Check the API status endpoint
+          status_response=$(curl -s "https://privatecreditpulse.net/api/cron/status" || echo "Failed to fetch status")
+          echo "📊 Current Status: $status_response"
+
+      - name: Success Notification
+        if: success()
+        run: |
+          echo "🎉 Daily news collection completed successfully!"
+          echo "⏰ Completion Time: $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
+          echo "✅ Next scheduled run: Tomorrow at 17:00 UTC (5:00 PM)"
+          
+      - name: Failure Notification  
         if: failure()
         run: |
-          echo "⚠️ News collection failed at $(date)"
-          echo "🔧 Check the logs above for detailed error information" 
+          echo "⚠️ Daily news collection workflow failed!"
+          echo "⏰ Failure Time: $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
+          echo "🔧 Please check the logs above for detailed error information"
+          echo "📧 Consider manual investigation of the news collection system" 
