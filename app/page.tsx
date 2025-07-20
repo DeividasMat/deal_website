@@ -113,7 +113,7 @@ export default function Home() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [filteredDeals, setFilteredDeals] = useState<Deal[]>([]);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
-  const [selectedDateRange, setSelectedDateRange] = useState<string>('today');
+  const [selectedDateRange, setSelectedDateRange] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [loading, setLoading] = useState(false);
@@ -122,7 +122,7 @@ export default function Home() {
 
   // Load all deals and check API status on component mount
   useEffect(() => {
-    handleDateRangeChange('today');
+    handleDateRangeChange('all');
     loadAvailableDates();
     checkApiStatus();
   }, []);
@@ -158,14 +158,11 @@ export default function Home() {
       const response = await fetch('/api/deals/all');
       const data = await response.json();
       
-      // Get all deals and filter by today by default
+      // Get all deals without date filtering
       const allDeals = data.deals || [];
       
-      // Filter by today's date by default
-      const todayDeals = allDeals.filter((deal: Deal) => isToday(new Date(deal.date)));
-      
-      // Remove duplicates and sort by date
-      const uniqueDeals = removeDuplicatesAggressive(todayDeals);
+      // Remove duplicates and sort by date (newest first)
+      const uniqueDeals = removeDuplicatesAggressive(allDeals);
       const sortedDeals = uniqueDeals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       
       setDeals(sortedDeals);
@@ -390,7 +387,15 @@ export default function Home() {
           <div className="apple-card p-6">
             <div className="mb-6">
               <h2 className="apple-headline text-lg mb-1">Filters</h2>
-              <p className="apple-caption">Showing articles from last 2 days</p>
+              <p className="apple-caption">
+                {selectedDateRange === 'all' ? 'Showing all articles' : 
+                 selectedDateRange === 'today' ? 'Showing today\'s articles' :
+                 selectedDateRange === 'yesterday' ? 'Showing yesterday\'s articles' :
+                 selectedDateRange === '2days' ? 'Showing articles from last 2 days' :
+                 selectedDateRange === 'week' ? 'Showing articles from this week' :
+                 selectedDateRange === 'lastweek' ? 'Showing articles from last week' :
+                 'Showing filtered articles'}
+              </p>
             </div>
             
             <div className="apple-grid apple-grid-3">
@@ -402,12 +407,12 @@ export default function Home() {
                   onChange={(e) => handleDateRangeChange(e.target.value)}
                   className="apple-select w-full"
                 >
+                  <option value="all">All Time</option>
                   <option value="2days">Last 2 Days</option>
                   <option value="today">Today</option>
                   <option value="yesterday">Yesterday</option>
                   <option value="week">This Week</option>
                   <option value="lastweek">Last Week</option>
-                  <option value="all">All Time</option>
                 </select>
               </div>
 
