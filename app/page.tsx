@@ -4,16 +4,16 @@ import { useState, useEffect } from 'react';
 import { format, isToday, isYesterday, isThisWeek } from 'date-fns';
 
 interface Deal {
-  id: number;
+  id?: number;
   date: string;
   title: string;
   summary: string;
   content: string;
   source: string;
   source_url?: string;
-  category?: string;
+  category: string;
   upvotes?: number;
-  created_at: string;
+  created_at?: string;
 }
 
 // Enhanced categorization logic
@@ -119,18 +119,101 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [upvoting, setUpvoting] = useState<number | null>(null);
   const [apiStatus, setApiStatus] = useState<{perplexity: string, openai: string, supabase: string} | null>(null);
+  const [newDealsCount, setNewDealsCount] = useState<number>(0);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [isPolling, setIsPolling] = useState<boolean>(true);
 
   // Load all deals and check API status on component mount
   useEffect(() => {
-    loadAllDeals();
+    handleDateRangeChange('all');
     loadAvailableDates();
     checkApiStatus();
   }, []);
+
+  // Auto-refresh deals every 30 seconds
+  useEffect(() => {
+    if (!isPolling) return;
+
+    const interval = setInterval(async () => {
+      try {
+        await refreshDealsQuietly();
+      } catch (error) {
+        console.error('Error in auto-refresh:', error);
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [selectedDateRange, isPolling]);
 
   // Filter deals when filters change
   useEffect(() => {
     filterDeals();
   }, [deals, selectedCategory, selectedRegion]);
+
+  // Clear new deals notification after 5 seconds
+  useEffect(() => {
+    if (newDealsCount > 0) {
+      const timer = setTimeout(() => {
+        setNewDealsCount(0);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [newDealsCount]);
+
+  const refreshDealsQuietly = async () => {
+    try {
+      const response = await fetch('/api/deals/all');
+      const data = await response.json();
+      const allDeals = data.deals || [];
+      
+      // Filter by date range
+      const now = new Date();
+      let filteredByDate = allDeals;
+      
+      switch (selectedDateRange) {
+        case 'today':
+          filteredByDate = allDeals.filter((deal: Deal) => isToday(new Date(deal.date)));
+          break;
+        case 'yesterday':
+          filteredByDate = allDeals.filter((deal: Deal) => isYesterday(new Date(deal.date)));
+          break;
+        case '2days':
+          const twoDaysAgo = new Date();
+          twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+          filteredByDate = allDeals.filter((deal: Deal) => new Date(deal.date) >= twoDaysAgo);
+          break;
+        case 'week':
+          filteredByDate = allDeals.filter((deal: Deal) => isThisWeek(new Date(deal.date)));
+          break;
+        case 'lastweek':
+          const weekAgo = new Date();
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          filteredByDate = allDeals.filter((deal: Deal) => new Date(deal.date) >= weekAgo);
+          break;
+        case 'all':
+        default:
+          filteredByDate = allDeals.slice(0, 100);
+          break;
+      }
+      
+      // Remove duplicates and sort
+      const uniqueDeals = removeDuplicatesAggressive(filteredByDate);
+      const sortedDeals = uniqueDeals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      // Check for new deals
+      const currentDealsCount = deals.length;
+      const newDealsCount = sortedDeals.length - currentDealsCount;
+      
+      if (newDealsCount > 0) {
+        setNewDealsCount(newDealsCount);
+        setLastRefresh(new Date());
+      }
+      
+      setDeals(sortedDeals);
+    } catch (error) {
+      console.error('Error in quiet refresh:', error);
+    }
+  };
 
   const checkApiStatus = async () => {
     try {
@@ -158,9 +241,14 @@ export default function Home() {
       const response = await fetch('/api/deals/all');
       const data = await response.json();
       
-      // Remove duplicates based on title similarity
-      const uniqueDeals = removeDuplicates(data.deals || []);
-      setDeals(uniqueDeals);
+      // Get all deals without date filtering
+      const allDeals = data.deals || [];
+      
+      // Remove duplicates and sort by date (newest first)
+      const uniqueDeals = removeDuplicatesAggressive(allDeals);
+      const sortedDeals = uniqueDeals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      setDeals(sortedDeals);
     } catch (error) {
       console.error('Error loading all deals:', error);
       setDeals([]);
@@ -169,24 +257,36 @@ export default function Home() {
     }
   };
 
-  // Enhanced duplicate removal
-  const removeDuplicates = (deals: Deal[]): Deal[] => {
+  // Aggressive duplicate removal - remove duplicates even from different sources
+  const removeDuplicatesAggressive = (deals: Deal[]): Deal[] => {
     const seen = new Map<string, Deal>();
     
     deals.forEach(deal => {
+      // More aggressive normalization
       const normalizedTitle = deal.title.toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/\b(inc|ltd|llc|corp|company|fund|capital|management|group)\b/g, '')
+        .trim();
+      
+      // Also check for similar content in summary
+      const normalizedSummary = deal.summary.toLowerCase()
         .replace(/[^\w\s]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
       
-      // Keep the one with more upvotes or more recent
-      if (!seen.has(normalizedTitle)) {
-        seen.set(normalizedTitle, deal);
+      const key = normalizedTitle;
+      
+      // Keep the one with more content, higher upvotes, or more recent
+      if (!seen.has(key)) {
+        seen.set(key, deal);
       } else {
-        const existing = seen.get(normalizedTitle)!;
-        if ((deal.upvotes || 0) > (existing.upvotes || 0) || 
-            new Date(deal.created_at) > new Date(existing.created_at)) {
-          seen.set(normalizedTitle, deal);
+        const existing = seen.get(key)!;
+        const dealScore = (deal.upvotes || 0) + deal.summary.length + (new Date(deal.date).getTime() / 1000000);
+        const existingScore = (existing.upvotes || 0) + existing.summary.length + (new Date(existing.date).getTime() / 1000000);
+        
+        if (dealScore > existingScore) {
+          seen.set(key, deal);
         }
       }
     });
@@ -196,69 +296,93 @@ export default function Home() {
 
   const filterDeals = () => {
     let filtered = [...deals];
-    
-    // Category filter
+
+    // Filter by category
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(deal => {
         const { type } = categorizeArticle(deal);
         return type === selectedCategory;
       });
     }
-    
-    // Region filter
+
+    // Filter by region
     if (selectedRegion !== 'all') {
       filtered = filtered.filter(deal => {
         const { region } = categorizeArticle(deal);
         return region === selectedRegion;
       });
     }
-    
+
     setFilteredDeals(filtered);
   };
 
-  const loadDealsByDateRange = async (dateRange: string) => {
-    if (dateRange === 'all') {
-      loadAllDeals();
-      return;
-    }
-    
+  const handleDateRangeChange = async (range: string) => {
+    setSelectedDateRange(range);
     setLoading(true);
+
     try {
-      const response = await fetch(`/api/deals?dateRange=${dateRange}`);
+      const response = await fetch('/api/deals/all');
       const data = await response.json();
-      const uniqueDeals = removeDuplicates(data.deals || []);
-      setDeals(uniqueDeals);
-    } catch (error) {
-      console.error('Error loading deals:', error);
-      setDeals([]);
+      const allDeals = data.deals || [];
+      
+      const now = new Date();
+      let filteredByDate = allDeals;
+      
+      switch (range) {
+        case 'today':
+          filteredByDate = allDeals.filter((deal: Deal) => isToday(new Date(deal.date)));
+          break;
+        case 'yesterday':
+          filteredByDate = allDeals.filter((deal: Deal) => isYesterday(new Date(deal.date)));
+          break;
+        case '2days':
+          const twoDaysAgo = new Date();
+          twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+          filteredByDate = allDeals.filter((deal: Deal) => new Date(deal.date) >= twoDaysAgo);
+          break;
+        case 'week':
+          filteredByDate = allDeals.filter((deal: Deal) => isThisWeek(new Date(deal.date)));
+          break;
+        case 'lastweek':
+          const weekAgo = new Date();
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          filteredByDate = allDeals.filter((deal: Deal) => new Date(deal.date) >= weekAgo);
+          break;
+        case 'all':
+        default:
+          // Show newest 100 for "all time"
+          filteredByDate = allDeals.slice(0, 100);
+          break;
+      }
+      
+      // Remove duplicates and sort
+      const uniqueDeals = removeDuplicatesAggressive(filteredByDate);
+      const sortedDeals = uniqueDeals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      setDeals(sortedDeals);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpvote = async (articleId: number) => {
-    if (upvoting === articleId) return;
+  const handleUpvote = async (dealId?: number) => {
+    if (!dealId || upvoting === dealId) return;
     
-    setUpvoting(articleId);
+    setUpvoting(dealId);
     try {
       const response = await fetch('/api/deals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'upvote', articleId: articleId }),
+        body: JSON.stringify({ action: 'upvote', articleId: dealId }),
       });
 
-      const data = await response.json();
-      
-      if (data.success) {
-        setDeals(prevDeals => 
-          prevDeals.map(deal => 
-            deal.id === articleId 
-              ? { ...deal, upvotes: (deal.upvotes || 0) + 1 }
-              : deal
-          )
-        );
-      } else {
-        alert(data.message || 'Failed to vote');
+      if (response.ok) {
+        // Update local state
+        setDeals(prev => prev.map(deal => 
+          deal.id === dealId 
+            ? { ...deal, upvotes: (deal.upvotes || 0) + 1 }
+            : deal
+        ));
       }
     } catch (error) {
       console.error('Error upvoting:', error);
@@ -267,24 +391,15 @@ export default function Home() {
     }
   };
 
-  const handleDateRangeChange = (dateRange: string) => {
-    setSelectedDateRange(dateRange);
-    loadDealsByDateRange(dateRange);
+  // Show only date, no time
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    if (isToday(date)) return 'Today';
+    if (isYesterday(date)) return 'Yesterday';
+    return format(date, 'MMM d, yyyy');
   };
 
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      if (isToday(date)) return 'Today';
-      if (isYesterday(date)) return 'Yesterday';
-      if (isThisWeek(date)) return format(date, 'EEEE');
-      return format(date, 'MMM d, yyyy');
-    } catch {
-      return dateString;
-    }
-  };
-
-  // Get unique categories and regions from current deals
+  // Get unique categories and regions for filters
   const categories = Array.from(new Set(deals.map(deal => categorizeArticle(deal).type))).sort();
   const regions = Array.from(new Set(deals.map(deal => categorizeArticle(deal).region))).sort();
 
@@ -292,6 +407,60 @@ export default function Home() {
     <div className="min-h-screen bg-white">
       <div className="apple-container">
         
+        {/* New Deals Notification */}
+        {newDealsCount > 0 && (
+          <div className="fixed top-4 right-4 z-50 animate-pulse">
+            <div className="apple-card p-4 bg-green-50 border-green-200 shadow-lg">
+              <div className="flex items-center space-x-3">
+                <div className="text-green-600">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-green-800">
+                    {newDealsCount} new deal{newDealsCount > 1 ? 's' : ''} added!
+                  </p>
+                  <p className="text-xs text-green-600">
+                    Updated {format(lastRefresh, 'h:mm:ss a')}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Auto-refresh Status */}
+        <div className="fixed bottom-4 right-4 z-40">
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setIsPolling(!isPolling)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isPolling 
+                  ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${isPolling ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
+                <span>{isPolling ? 'Auto-refresh ON' : 'Auto-refresh OFF'}</span>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => handleDateRangeChange(selectedDateRange)}
+              className="px-3 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition-colors"
+            >
+              <div className="flex items-center space-x-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Refresh Now</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
         {/* API Configuration Warning */}
         {(apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing' || apiStatus?.supabase === 'missing') && (
           <div className="apple-space-md">
@@ -355,6 +524,16 @@ export default function Home() {
           <div className="apple-card p-6">
             <div className="mb-6">
               <h2 className="apple-headline text-lg mb-1">Filters</h2>
+              <p className="apple-caption">
+                {selectedDateRange === 'all' ? 'Showing all articles' : 
+                 selectedDateRange === 'today' ? 'Showing today\'s articles' :
+                 selectedDateRange === 'yesterday' ? 'Showing yesterday\'s articles' :
+                 selectedDateRange === '2days' ? 'Showing articles from last 2 days' :
+                 selectedDateRange === 'week' ? 'Showing articles from this week' :
+                 selectedDateRange === 'lastweek' ? 'Showing articles from last week' :
+                 'Showing filtered articles'}
+                 {isPolling && <span className="ml-2 text-green-600">• Live updates enabled</span>}
+              </p>
             </div>
             
             <div className="apple-grid apple-grid-3">
@@ -367,9 +546,11 @@ export default function Home() {
                   className="apple-select w-full"
                 >
                   <option value="all">All Time</option>
+                  <option value="2days">Last 2 Days</option>
                   <option value="today">Today</option>
                   <option value="yesterday">Yesterday</option>
                   <option value="week">This Week</option>
+                  <option value="lastweek">Last Week</option>
                 </select>
               </div>
 
@@ -535,7 +716,7 @@ export default function Home() {
                               </span>
                             </div>
                             <span className="apple-small">
-                              {format(new Date(deal.created_at), 'MMM d, h:mm a')}
+                              {deal.created_at && format(new Date(deal.created_at), 'MMM d, h:mm a')}
                             </span>
                           </div>
                         </div>

@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/daily-news",
       "schedule": "0 8,12,17 * * *"
+    },
+    {
+      "path": "/api/cron/smart-duplicate-cleanup",
+      "schedule": "30 17 * * *"
     }
   ]
 } 

@@ -1,19 +1,24 @@
 import * as cron from 'node-cron';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { PerplexityService } from './perplexity';
 import { OpenAIService } from './openai';
 import { getDatabase } from './database';
+import { getDateValidator } from './date-validator';
+import { EnhancedDuplicateDetector } from './enhanced-duplicate-detector';
+import { duplicateCleaner } from './duplicate-cleaner';
+import { advancedDuplicateCleaner } from './advanced-duplicate-cleaner';
 
 export class DealScheduler {
-  private perplexityService: PerplexityService | null = null;
-  private openaiService: OpenAIService | null = null;
+  private perplexityService?: PerplexityService;
+  private openaiService?: OpenAIService;
+  private duplicateDetector: EnhancedDuplicateDetector | null = null;
   private isRunning = false;
 
   constructor() {
     // Services will be initialized when first used
   }
 
-  private getPerplexityService(): PerplexityService {
+  public getPerplexityService(): PerplexityService {
     if (!this.perplexityService) {
       this.perplexityService = new PerplexityService();
     }
@@ -27,6 +32,13 @@ export class DealScheduler {
     return this.openaiService;
   }
 
+  private getDuplicateDetector(): EnhancedDuplicateDetector {
+    if (!this.duplicateDetector) {
+      this.duplicateDetector = new EnhancedDuplicateDetector();
+    }
+    return this.duplicateDetector;
+  }
+
   async fetchAndProcessDeals(targetDate?: string): Promise<void> {
     if (this.isRunning) {
       console.log('News processing already in progress...');
@@ -37,8 +49,9 @@ export class DealScheduler {
     console.log('Starting daily news processing...');
 
     try {
-      // Use provided date or yesterday's date
-      const date = targetDate || format(subDays(new Date(), 1), 'yyyy-MM-dd');
+      // CRITICAL FIX: Always use the target date for article dating
+      // This ensures articles get the date they were actually fetched for
+      const date = targetDate || format(new Date(), 'yyyy-MM-dd');
       
       console.log(`Fetching news for ${date}...`);
       
@@ -61,8 +74,10 @@ export class DealScheduler {
         const db = getDatabase();
         try {
           const fallbackSummary = await this.getOpenAIService().summarizeDeals(fallbackContent + (newsContent || ''));
+          
+          // CRITICAL FIX: Always use target fetch date
           await db.saveDeal({
-            date,
+            date: date, // Use target date directly - when we fetched the news
             title: fallbackSummary.title || `Private Credit Update - ${date}`,
             summary: fallbackSummary.summary || 'Limited market activity reported for this date.',
             content: fallbackContent + (newsContent || ''),
@@ -70,7 +85,7 @@ export class DealScheduler {
             source_url: fallbackSummary.source_url,
             category: fallbackSummary.category || 'Market News'
           });
-          console.log(`✅ Saved minimal fallback content for ${date}`);
+          console.log(`✅ Saved minimal fallback content for ${date} (Fetch Date: ${date})`);
         } catch (error) {
           console.error(`❌ Error saving minimal content:`, error);
         }
@@ -97,7 +112,7 @@ export class DealScheduler {
           try {
             // Extract individual articles using OpenAI
             console.log(`Sending to OpenAI for extraction: ${section.content.substring(0, 200)}...`);
-            const articles = await this.getOpenAIService().extractNewsArticles(section.content, section.category);
+            const articles = await this.getOpenAIService().extractNewsArticles(section.content, section.category, date);
             
             console.log(`Found ${articles.length} articles in ${section.category} section:`, articles.map((a: any) => a.title));
             
@@ -134,40 +149,28 @@ export class DealScheduler {
                       console.log(`🔗 Updated duplicate article ${duplicate.id} with source URL: ${article.source_url}`);
                       updatedAny = true;
                     }
-                    // Or update if we have a better source (more specific publication)
-                    else if (duplicate.source_url && article.source_url && 
-                             article.original_source && 
-                             duplicate.source === 'Perplexity + OpenAI' &&
-                             ['Bloomberg', 'Reuters', 'Financial Times', 'WSJ'].includes(article.original_source)) {
-                      await db.updateDealSourceUrl(
-                        duplicate.id!, 
-                        article.source_url, 
-                        article.original_source
-                      );
-                      console.log(`📰 Updated duplicate article ${duplicate.id} with better source: ${article.original_source}`);
-                      updatedAny = true;
-                    }
                   }
                   
-                  if (updatedAny) {
-                    console.log(`✅ Enhanced existing duplicate articles for: "${article.title}"`);
-                  } else {
-                    console.log(`⚠️ Skipping duplicate article (no new information): "${article.title}"`);
+                  if (!updatedAny) {
+                    console.log(`⚠️ Skipping duplicate: "${article.title}"`);
                   }
                 } else {
-                  // No duplicates found - save as new article
+                  // CRITICAL FIX: No duplicates found - save with FETCH DATE only
                   console.log(`💾 Saving new article to Supabase: "${article.title}"`);
+                  
+                  // ALWAYS use the target fetch date - never extract dates from content
+                  // This prevents articles from getting wrong dates due to content mentions
                   const dealId = await db.saveDeal({
-                    date,
+                    date: date, // ALWAYS use target fetch date - when we found the news
                     title: article.title,
                     summary: article.summary,
                     content: section.content, // Keep section content for reference
                     source: article.original_source || 'Financial News',
                     source_url: article.source_url,
-                    category: article.category || 'Market News' // Use proper category from OpenAI
+                    category: article.category || 'Market News'
                   });
                   totalArticlesSaved++;
-                  console.log(`✅ New article saved to Supabase with ID ${dealId}: "${article.title}"`);
+                  console.log(`✅ New article saved to Supabase with ID ${dealId}: "${article.title}" (Fetch Date: ${date})`);
                 }
               } catch (saveError) {
                 console.error(`❌ Error processing article "${article.title}":`, saveError);
@@ -185,8 +188,9 @@ export class DealScheduler {
               const duplicates = await db.findDuplicateDeals(fallbackSummary.title, date);
               
               if (duplicates.length === 0) {
+                // CRITICAL FIX: Always use target fetch date for fallback
                 await db.saveDeal({
-                  date,
+                  date: date, // Use target fetch date directly
                   title: fallbackSummary.title,
                   summary: fallbackSummary.summary,
                   content: section.content,
@@ -195,7 +199,7 @@ export class DealScheduler {
                   category: fallbackSummary.category || 'Market News'
                 });
                 totalArticlesSaved++;
-                console.log(`✅ Saved fallback summary: "${fallbackSummary.title}"`);
+                console.log(`✅ Saved fallback summary: "${fallbackSummary.title}" (Fetch Date: ${date})`);
               } else {
                 console.log(`⚠️ Skipping duplicate fallback summary: "${fallbackSummary.title}"`);
               }
@@ -209,8 +213,14 @@ export class DealScheduler {
       }
 
       console.log(`Successfully processed and saved ${totalArticlesSaved} new articles for ${date} (total: ${existingDeals.length + totalArticlesSaved})`);
+      
+      // INTEGRATED DUPLICATE ANALYSIS AND CLEANUP
+      console.log('🔍 Running integrated duplicate analysis and cleanup...');
+      const duplicatesRemoved = await this.runIntegratedDuplicateCleanup();
+      console.log(`🧹 Cleaned up ${duplicatesRemoved} duplicates during processing`);
+      
     } catch (error) {
-      console.error('Error processing news:', error);
+      console.error('❌ Error in fetchAndProcessDeals:', error);
     } finally {
       this.isRunning = false;
     }
@@ -269,22 +279,21 @@ export class DealScheduler {
         });
       });
     }
-    
-    // Fallback: treat entire content as one section
-    if (sections.length === 0) {
-      console.log('Using entire content as single section');
+
+    // Fallback: Use the entire content as one section if no patterns found
+    if (sections.length === 0 && content.length > 200) {
+      console.log(`Using entire content as single section`);
       sections.push({
-        category: 'Deal Activity',
+        category: 'Private Credit News',
         content: content
       });
     }
-    
-    console.log(`Parsed sections:`, sections.map(s => `${s.category} (${s.content.length} chars)`));
+
     return sections;
   }
 
   startScheduler(): void {
-    // Run every day at 12:00 PM for the previous day
+    // Run every day at 12:00 PM for the current day
     cron.schedule('0 12 * * *', async () => {
       console.log(`🕐 Scheduled task starting at 12:00 PM EST...`);
       await this.scheduleDailyNews();
@@ -293,7 +302,7 @@ export class DealScheduler {
       timezone: "America/New_York"
     });
 
-    console.log('News scheduler started - will run daily at 12:00 PM EST for previous day with duplicate removal');
+    console.log('News scheduler started - will run daily at 12:00 PM EST for current day with duplicate removal');
   }
 
   stopScheduler(): void {
@@ -307,27 +316,247 @@ export class DealScheduler {
   }
 
   async runDuplicateCleanup(): Promise<number> {
-    console.log('🧹 Running manual duplicate cleanup...');
-    return await this.removeDuplicates();
+    console.log('🧹 Running advanced duplicate cleanup...');
+    try {
+      // First run the enhanced duplicate detector
+      const enhancedResult = await this.runEnhancedDuplicateCleanup();
+      console.log(`🔍 Enhanced duplicate detection removed: ${enhancedResult} duplicates`);
+      
+      // Then run the advanced AI-powered cleanup
+      const advancedResult = await advancedDuplicateCleaner.cleanDatabase();
+      console.log(`🤖 Advanced AI cleanup removed: ${advancedResult.duplicatesRemoved} duplicates, kept ${advancedResult.articlesKept} articles`);
+      
+      return enhancedResult + advancedResult.duplicatesRemoved;
+    } catch (error) {
+      console.error('❌ Error in advanced duplicate cleanup:', error);
+      // Fallback to basic duplicate removal
+      console.log('🔄 Falling back to basic duplicate removal...');
+      return await this.removeDuplicates();
+    }
+  }
+
+  async runIntegratedDuplicateCleanup(): Promise<number> {
+    console.log('🔍 Starting integrated duplicate analysis and cleanup...');
+    
+    try {
+      let totalRemoved = 0;
+      
+      // Step 1: Enhanced duplicate cleanup (basic similarity)
+      console.log('🧹 Step 1: Running enhanced duplicate cleanup...');
+      const enhancedResult = await this.runEnhancedDuplicateCleanup();
+      console.log(`✅ Enhanced cleanup complete: ${enhancedResult} duplicates removed`);
+      totalRemoved += enhancedResult;
+      
+      // Step 2: Semantic duplicate detection for recent articles
+      console.log('🔍 Step 2: Running semantic duplicate detection...');
+      const semanticResult = await this.runSemanticDuplicateCleanup();
+      console.log(`✅ Semantic cleanup complete: ${semanticResult} duplicates removed`);
+      totalRemoved += semanticResult;
+      
+      console.log(`📊 Total duplicates removed: ${totalRemoved}`);
+      return totalRemoved;
+      
+    } catch (error) {
+      console.error('❌ Error in integrated duplicate cleanup:', error);
+      return 0;
+    }
+  }
+
+  private async runSemanticDuplicateCleanup(): Promise<number> {
+    try {
+      const db = getDatabase();
+      const openai = this.getOpenAIService();
+      
+      // Get recent articles (last 7 days) for semantic analysis
+      const recentArticles = await db.getAllDeals();
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      const articlesToCheck = recentArticles.filter(article => {
+        const articleDate = new Date(article.created_at || article.date);
+        return articleDate >= sevenDaysAgo;
+      }).slice(0, 20); // Limit to 20 most recent articles
+      
+      if (articlesToCheck.length < 2) {
+        console.log('⚠️ Not enough recent articles for semantic analysis');
+        return 0;
+      }
+      
+      console.log(`🔍 Checking ${articlesToCheck.length} recent articles for semantic duplicates...`);
+      
+      let duplicatesRemoved = 0;
+      const maxComparisons = 20; // Limit comparisons to avoid excessive API calls
+      let comparisons = 0;
+      
+      for (let i = 0; i < articlesToCheck.length && comparisons < maxComparisons; i++) {
+        for (let j = i + 1; j < articlesToCheck.length && comparisons < maxComparisons; j++) {
+          comparisons++;
+          
+          const article1 = articlesToCheck[i];
+          const article2 = articlesToCheck[j];
+          
+          // Skip if from very different dates
+          const date1 = new Date(article1.created_at || article1.date);
+          const date2 = new Date(article2.created_at || article2.date);
+          const daysDiff = Math.abs(date1.getTime() - date2.getTime()) / (1000 * 60 * 60 * 24);
+          
+          if (daysDiff > 3) continue; // Only check articles within 3 days of each other
+          
+          // Analyze semantic similarity
+          const analysis = await this.analyzeSemanticSimilarity(article1, article2);
+          
+          if (analysis.isDuplicate && analysis.similarity >= 0.8) {
+            console.log(`🔍 Found semantic duplicate: "${article1.title}" vs "${article2.title}"`);
+            
+            // Determine which to keep based on free source priority
+            const score1 = this.calculateEnhancedScore(article1);
+            const score2 = this.calculateEnhancedScore(article2);
+            
+            const deleteArticle = score1 > score2 ? article2 : article1;
+            const keepArticle = score1 > score2 ? article1 : article2;
+            
+                         try {
+               if (deleteArticle.id) {
+                 await db.deleteDeal(deleteArticle.id);
+                 duplicatesRemoved++;
+                 console.log(`✅ Removed semantic duplicate: "${deleteArticle.title}" (kept: "${keepArticle.title}")`);
+               }
+             } catch (error) {
+               console.error(`❌ Error removing semantic duplicate:`, error);
+             }
+          }
+          
+          // Small delay
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      console.log(`📊 Semantic analysis complete: ${duplicatesRemoved} duplicates removed from ${comparisons} comparisons`);
+      return duplicatesRemoved;
+      
+    } catch (error) {
+      console.error('❌ Error in semantic duplicate cleanup:', error);
+      return 0;
+    }
+  }
+
+  private async analyzeSemanticSimilarity(article1: any, article2: any): Promise<any> {
+    try {
+      // For now, use basic title comparison until we fix the OpenAI service access
+      const title1 = article1.title.toLowerCase();
+      const title2 = article2.title.toLowerCase();
+      
+      // Check if they have the same company name and transaction type
+      const words1 = title1.split(' ').filter((word: string) => word.length > 3);
+      const words2 = title2.split(' ').filter((word: string) => word.length > 3);
+      
+      const commonWords = words1.filter((word: string) => words2.includes(word));
+      const similarity = commonWords.length / Math.max(words1.length, words2.length);
+      
+      // Check for financial terms and amounts
+      const hasFinancialTerms = (title1.includes('facility') || title1.includes('credit') || title1.includes('loan')) &&
+                               (title2.includes('facility') || title2.includes('credit') || title2.includes('loan'));
+      
+      // Check for same amounts
+      const amount1 = title1.match(/\$\d+[mb]?/);
+      const amount2 = title2.match(/\$\d+[mb]?/);
+      const sameAmount = amount1 && amount2 && amount1[0] === amount2[0];
+      
+      const isDuplicate = similarity > 0.4 && hasFinancialTerms && sameAmount;
+      
+      return {
+        isDuplicate,
+        similarity: isDuplicate ? similarity : 0,
+        reason: isDuplicate ? `Same company and transaction: ${commonWords.join(', ')}` : 'Different stories'
+      };
+      
+    } catch (error) {
+      console.error('❌ Error analyzing semantic similarity:', error);
+      return { isDuplicate: false, similarity: 0, reason: 'Analysis failed' };
+    }
+  }
+
+  private calculateEnhancedScore(article: any): number {
+    let score = 0;
+    
+    // FREE SOURCE PRIORITY (highest scoring)
+    if (article.source_url) {
+      const url = article.source_url.toLowerCase();
+      
+      // FREE ACCESSIBLE SOURCES
+      if (url.includes('reuters.com') || url.includes('yahoo.com') || 
+          url.includes('marketwatch.com') || url.includes('cnbc.com') ||
+          url.includes('businesswire.com') || url.includes('prnewswire.com') ||
+          url.includes('seekingalpha.com') || url.includes('benzinga.com')) {
+        score += 50;
+      }
+      // PARTIALLY FREE
+      else if (url.includes('ft.com') || url.includes('wsj.com')) {
+        score += 30;
+      }
+      // PAID SOURCES (lower score)
+      else if (url.includes('bloomberg.com')) {
+        score += 20;
+      }
+      else if (url.startsWith('https://')) {
+        score += 25;
+      }
+    } else {
+      score -= 20; // Penalty for no URL
+    }
+    
+    // SOURCE NAME PRIORITY
+    if (article.source) {
+      const source = article.source.toLowerCase();
+      if (source.includes('reuters') || source.includes('yahoo') || 
+          source.includes('cnbc') || source.includes('marketwatch') ||
+          source.includes('ainvest')) {
+        score += 25;
+      }
+      else if (source.includes('bloomberg terminal')) {
+        score += 5; // Very low score for paid terminal
+      }
+    }
+    
+    // CONTENT QUALITY
+    if (article.title) {
+      score += Math.min(article.title.length / 8, 15);
+      if (article.title.includes('$')) score += 10;
+    }
+    
+    if (article.summary) {
+      score += Math.min(article.summary.length / 20, 20);
+      if (article.summary.includes('**')) score += 5;
+    }
+    
+    // ENGAGEMENT
+    score += (article.upvotes || 0) * 2;
+    
+    return score;
   }
 
   async scheduleDailyNews(): Promise<void> {
     console.log('🕐 Starting daily news collection...');
     
     try {
-      // Get yesterday's date for news collection
-      const yesterday = subDays(new Date(), 1);
-      const dateStr = format(yesterday, 'yyyy-MM-dd');
+      // Get today's date for news collection
+      const today = new Date();
+      const dateStr = format(today, 'yyyy-MM-dd');
       
       console.log(`📅 Collecting news for: ${dateStr}`);
       
-      // Fetch news for yesterday using existing method
+      // Fetch news for today using existing method
       await this.fetchAndProcessDeals(dateStr);
       
-      // Clean up duplicates after fetching
-      console.log('🧹 Cleaning up duplicate articles...');
-      const duplicatesRemoved = await this.removeDuplicates();
-      console.log(`🗑️ Removed ${duplicatesRemoved} duplicate articles`);
+      // Clean up duplicates after fetching with enhanced detection
+      console.log('🧹 Cleaning up duplicate articles with enhanced detection...');
+      // const duplicatesRemoved = await this.runEnhancedDuplicateCleanup();
+      // console.log(`🗑️ Removed ${duplicatesRemoved} duplicate articles`);
+      
+      // Clean up database duplicates with advanced AI detection
+      console.log('🧹 Running advanced database duplicate cleanup...');
+      // const dbCleanupResult = await advancedDuplicateCleaner.cleanDatabase();
+      // console.log(`🗑️ Advanced cleanup: removed ${dbCleanupResult.duplicatesRemoved} duplicates, kept ${dbCleanupResult.articlesKept} articles`);
       
       // Get final count
       const db = getDatabase();
@@ -403,6 +632,46 @@ export class DealScheduler {
       console.error('Error removing duplicates:', error);
       return 0;
     }
+  }
+
+  async runEnhancedDuplicateCleanup(): Promise<number> {
+    console.log('🧹 Starting enhanced duplicate cleanup...');
+    
+    const db = getDatabase();
+    const allDeals = await db.getAllDeals();
+    
+    // Get recent deals from last 7 days for duplicate checking
+    const recentDeals = allDeals.filter(deal => {
+      const dealDate = new Date(deal.date);
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      return dealDate >= sevenDaysAgo;
+    });
+    
+    console.log(`Using enhanced duplicate detection on ${recentDeals.length} recent deals...`);
+    
+    // Use enhanced duplicate detector
+    const duplicateDetector = this.getDuplicateDetector();
+    const { duplicates, toRemove } = await duplicateDetector.findDuplicates(recentDeals);
+    
+    console.log(`Found ${duplicates.length} duplicate groups containing ${toRemove.length} articles to remove`);
+    
+    // Remove duplicate articles
+    let duplicatesRemoved = 0;
+    for (const index of toRemove) {
+      const articleToRemove = recentDeals[index];
+      if (articleToRemove && articleToRemove.id) {
+        try {
+          await db.deleteDeal(articleToRemove.id);
+          duplicatesRemoved++;
+          console.log(`✅ Removed duplicate: "${articleToRemove.title.substring(0, 50)}..."`);
+        } catch (error) {
+          console.error(`❌ Error removing duplicate ${articleToRemove.id}:`, error);
+        }
+      }
+    }
+    
+    return duplicatesRemoved;
   }
 }
 

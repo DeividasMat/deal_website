@@ -37,110 +37,23 @@ export class PerplexityService {
     console.log(`Perplexity API key loaded: ${this.apiKey.substring(0, 8)}...`);
   }
 
-  async searchPrivateCreditDeals(date: string): Promise<string> {
-    const targetDate = new Date(date);
-    const formattedDate = targetDate.toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
-
-    console.log(`🔍 Starting search for ${formattedDate} (${date})`);
-
-    // Focus on the most important private credit news
-    const searches = [
-      {
-        category: 'Deal Activity',
-        queries: [
-          `Find private credit lending deals announced on ${formattedDate}. Search for: lenders providing credit facilities to companies, direct lending transactions, asset-based lending deals, unitranche financing, mezzanine loans. Include lender names, borrower companies, loan amounts, and deal purposes. If no deals found for exact date, include recent relevant deals from nearby dates but clearly specify actual publication dates.`,
-          `Search for private market debt transactions from ${formattedDate}. Include: acquisition financing, LBO debt, refinancing deals, working capital facilities, equipment financing. Focus on specific company names and transaction amounts. Include recent announcements if specific date has limited coverage.`,
-          `Find credit facility announcements and term loan signings on ${formattedDate}. Include: revolving credit facilities, term loans, bridge financing, distressed debt deals. Must include borrower names and facility amounts. Show recent relevant deals if exact date coverage is limited.`,
-          `Search for alternative lending deals on ${formattedDate}. Include: specialty finance transactions, factoring deals, invoice financing, supply chain financing. Focus on non-bank lenders and fintech companies providing credit. Include nearby dates if needed for comprehensive coverage.`,
-          `Find private debt restructuring and special situations deals on ${formattedDate}. Include: NPL acquisitions, DIP financing, rescue financing, turnaround loans. Must have specific company names and amounts. Include recent similar deals if specific date is limited.`
-        ]
-      },
-      {
-        category: 'Fund Raised',
-        queries: [
-          `Find private credit fund launches and closings announced on ${formattedDate}. Search for: direct lending funds, private debt funds, credit opportunity funds. Include fund managers, target sizes, actual amounts raised, and investor types. Include recent fund news if specific date has limited announcements.`,
-          `Search for private equity credit fund raises from ${formattedDate}. Include: Apollo, Blackstone, KKR, Ares, Oaktree, Blue Owl, Golub Capital, Monroe Capital fund announcements. Must include fund sizes and strategies. Show recent relevant fund activity if exact date is limited.`,
-          `Find BDC capital raises and CLO issuances announced on ${formattedDate}. Include: business development company equity raises, debt issuances, CLO pricing, and manager details. Include recent activity if specific date coverage is sparse.`,
-          `Search for specialty finance fund launches on ${formattedDate}. Include: distressed debt funds, mezzanine funds, real estate credit funds, infrastructure debt funds. Focus on first closings and final closings. Show recent relevant launches if needed.`,
-          `Find private credit platform launches and joint ventures on ${formattedDate}. Include: new lending platforms, strategic partnerships between credit managers, platform acquisitions by private equity firms. Include recent developments if specific date is limited.`
-        ]
-      },
-      {
-        category: 'Market News',
-        queries: [
-          `Find private credit market data and trends announced on ${formattedDate}. Include: default rates, spread movements, dry powder levels, deployment rates. Must have specific data points and sources. Include recent relevant market data if specific date has limited coverage.`,
-          `Search for regulatory news affecting private credit on ${formattedDate}. Include: new regulations, compliance updates, regulatory guidance affecting direct lenders and private debt funds. Show recent regulatory developments if needed.`,
-          `Find institutional investor allocation news on ${formattedDate}. Include: pension funds, insurance companies, endowments allocating to private credit. Must have specific allocation amounts and strategies. Include recent allocation news if exact date is limited.`,
-          `Search for private credit industry consolidation news on ${formattedDate}. Include: manager acquisitions, platform mergers, strategic partnerships. Focus on transaction values and strategic rationale. Show recent industry developments if specific date coverage is sparse.`,
-          `Find credit rating actions and portfolio performance news on ${formattedDate}. Include: rating agency actions on private companies, portfolio company updates, credit quality trends. Include recent rating actions if exact date has limited news.`
-        ]
-      }
+  async searchPrivateCreditDeals(date: string, fundQuery?: string): Promise<string> {
+    const categories = [
+      'Fund Launches and Closings',
+      'Company Investments and Financing',
+      'Private Equity Deals',
+      'Private Debt/Credit Transactions'
     ];
-
-    let allResults = '';
-
-    try {
-      for (const searchGroup of searches) {
-        console.log(`🔍 Searching ${searchGroup.category}...`);
-        let categoryResults = '';
-        
-        for (let i = 0; i < searchGroup.queries.length; i++) {
-          try {
-            console.log(`🔍 ${searchGroup.category} search ${i + 1}/${searchGroup.queries.length}`);
-            const result = await this.executeSearch(searchGroup.queries[i], searchGroup.category);
-            
-            if (result && result.length > 100 && !result.includes('temporarily unavailable')) {
-              categoryResults += `\n${result}\n`;
-              console.log(`✅ Found content for ${searchGroup.category} search ${i + 1}`);
-            }
-            
-            // Rate limiting between searches
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Reduced delay
-          } catch (error) {
-            console.error(`❌ ${searchGroup.category} search ${i + 1} failed:`, error);
-          }
+    let allContent = '';
+    for (const category of categories) {
+      let query = `Find private credit and private equity news published EXACTLY on ${date} in category: ${category}. Only include news with publication date ${date} - no other dates.`;
+      if (fundQuery) {
+        query = `${query} focusing on ${fundQuery} fund/company details`;
         }
-        
-        if (categoryResults.trim()) {
-          allResults += `\n\n=== ${searchGroup.category} ===\n${categoryResults}`;
-          console.log(`✅ Added ${searchGroup.category} results`);
+      const categoryContent = await this.executeSearch(query, category);
+      allContent += categoryContent + '\n\n';
         }
-        
-        // Rate limiting between categories
-        await new Promise(resolve => setTimeout(resolve, 1500));
-      }
-
-      console.log(`🏁 Search completed. Total results length: ${allResults.length}`);
-      
-      // If we got very little content, try a more general search
-      if (allResults.length < 200) {
-        console.log(`⚠️ Limited content found (${allResults.length} chars), trying broader search...`);
-        try {
-          const broadSearch = await this.executeSearch(
-            `Find any private credit, direct lending, or alternative credit news and market activity from ${formattedDate}. Include: transaction announcements, fund news, market developments, regulatory updates, or industry analysis. Cast a wide net to find relevant private credit content.`,
-            'Broad Search'
-          );
-          
-          if (broadSearch && broadSearch.length > 100) {
-            allResults += `\n\n=== Additional Market Activity ===\n${broadSearch}`;
-            console.log(`✅ Added broad search results: ${broadSearch.length} chars`);
-          }
-        } catch (error) {
-          console.error('❌ Broad search failed:', error);
-        }
-      }
-      
-      // Always return something, even if minimal
-      return allResults || `Limited private credit market activity found for ${formattedDate}. Market research indicates ongoing activity in direct lending and alternative credit sectors.`;
-    } catch (error) {
-      console.error('❌ Error in news search:', error);
-      throw new Error('Failed to search for private credit news');
-    }
+    return allContent.trim();
   }
 
   private async executeMultipleSearches(baseQuery: string, category: string, targetCount: number): Promise<string> {
@@ -351,26 +264,22 @@ export class PerplexityService {
           messages: [
             {
               role: 'system',
-              content: `You are a financial news analyst specializing in private credit markets. For ${category}:
+              content: `You are a financial news analyst specializing in private credit and equity markets. For ${category}:
 
               CRITICAL REQUIREMENTS:
-              1. Find REAL, SPECIFIC private credit news for the requested date
-              2. Include exact company names, deal amounts, and transaction details
-              3. MUST provide source URLs whenever possible - this is critical for verification
-              4. Focus on factual announcements, not general market commentary
-              5. Each news item should include:
-                 - Specific headline with company/fund names
-                 - Key financial details (amounts, terms, etc.)
-                 - Source publication name and date
-                 - DIRECT article URL (essential for credibility)
-                 - Brief summary of significance
+              1. Find REAL, SPECIFIC news on funds, companies, private equity deals, and private debt/credit transactions published EXACTLY on the requested date
+              2. STRICT DATE VALIDATION: Only include articles with publication date matching the requested date - NO articles from other dates
+              3. Include exact company names, fund details, deal amounts, and transaction structures
+              4. MUST provide source URLs whenever possible - this is critical for verification
+              5. Focus on factual announcements about funds and companies, not general commentary
 
               SEARCH STRATEGY:
-              - Primary focus: News specifically published on the requested date
-              - If limited coverage for exact date: Include recent relevant announcements from nearby dates
-              - Always clearly specify the actual publication date for each item
-              - Prioritize credible financial news sources
-              - Include any private credit activity that would be relevant to track
+              - MANDATORY: Only include news published on the exact date requested - NO exceptions
+              - Reject any articles from yesterday, last week, 2024, or any other date
+              - If an article mentions recent events but was published on a different date, EXCLUDE it
+              - If no news exists for the exact date, respond with "No private credit news found for [exact date]"
+              - Always verify publication date matches the requested date before including
+              - Prioritize credible sources with company/fund specifics
 
               FORMAT EACH NEWS ITEM EXACTLY AS:
               • [HEADLINE] - [Company/Fund Name] [Deal/Announcement Details]

@@ -42,22 +42,20 @@ export async function POST(request: NextRequest) {
 
     const scheduler = getScheduler();
     
-    // Allow custom date or use yesterday
+    // Allow custom date or use today
     const body = await request.json().catch(() => ({}));
-    const targetDate = body.date || format(subDays(new Date(), 1), 'yyyy-MM-dd');
+    const targetDate = body.date || format(new Date(), 'yyyy-MM-dd');
     
     console.log(`📅 Collecting news for: ${targetDate}`);
     console.log(`🕐 Current time: ${new Date().toISOString()}`);
     
-    // Fetch news for the target date
-    console.log('📰 Starting news fetch...');
+    // Fetch news for the target date (includes integrated duplicate cleanup)
+    console.log('📰 Starting news fetch with integrated duplicate cleanup...');
     await scheduler.fetchAndProcessDeals(targetDate);
-    console.log('✅ News fetch completed');
+    console.log('✅ News fetch and duplicate cleanup completed');
     
-    // Clean up duplicates after fetching
-    console.log('🧹 Cleaning up duplicate articles...');
-    const duplicatesRemoved = await scheduler.runDuplicateCleanup();
-    console.log(`🗑️ Removed ${duplicatesRemoved} duplicate articles`);
+    // Note: Duplicate cleanup is now integrated into fetchAndProcessDeals workflow
+    // No need for separate cleanup steps - everything is handled automatically
     
     console.log(`✅ Manual trigger completed successfully at ${new Date().toISOString()}`);
     
@@ -65,7 +63,12 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Manual news collection completed',
       date: targetDate,
-      duplicatesRemoved,
+      // duplicatesRemoved,
+      // databaseCleanup: {
+      //   duplicatesRemoved: dbCleanupResult.duplicatesRemoved,
+      //   articlesKept: dbCleanupResult.articlesKept,
+      //   duplicateGroupsFound: dbCleanupResult.duplicatesFound
+      // },
       timestamp: new Date().toISOString(),
       executionTime: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
       trigger: 'manual',
@@ -111,7 +114,7 @@ export async function GET() {
     usage: {
       method: 'POST',
       body: 'Optional: { "date": "2024-12-25" }',
-      description: 'Triggers news collection for specified date or yesterday'
+      description: 'Triggers news collection for specified date or today'
     }
   });
 } 
