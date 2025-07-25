@@ -1,8 +1,10 @@
 name: Daily News Collection
 on:
   schedule:
-    # Runs every day at 12:00 PM EST (5:00 PM UTC)
-    - cron: '0 17 * * *'
+    # Run 3 times daily to catch more news throughout the day
+    - cron: '0 8 * * *'   # 8:00 AM UTC (3:00 AM EST)
+    - cron: '0 12 * * *'  # 12:00 PM UTC (7:00 AM EST) 
+    - cron: '0 17 * * *'  # 5:00 PM UTC (12:00 PM EST)
   
   # Allow manual triggering
   workflow_dispatch:

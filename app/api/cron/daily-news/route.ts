@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getScheduler } from '@/lib/scheduler';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,13 +56,13 @@ export async function GET(request: NextRequest) {
 
     const scheduler = getScheduler();
     
-    // Get yesterday's date for news collection
-    const yesterday = subDays(new Date(), 1);
-    const dateStr = format(yesterday, 'yyyy-MM-dd');
+    // Get today's date for news collection (FIXED: now fetches today's data)
+    const today = new Date();
+    const dateStr = format(today, 'yyyy-MM-dd');
     
     console.log(`📅 Collecting news for: ${dateStr}`);
     
-    // Fetch news for yesterday
+    // Fetch news for today
     console.log('📰 Starting news fetch...');
     await scheduler.fetchAndProcessDeals(dateStr);
     console.log('✅ News fetch completed');
