@@ -10,7 +10,7 @@
   "crons": [
     {
       "path": "/api/cron/daily-news",
-      "schedule": "0 8,12,17 * * *"
+      "schedule": "0 12,17 * * *"
     },
     {
       "path": "/api/cron/smart-duplicate-cleanup",
