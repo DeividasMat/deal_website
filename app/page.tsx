@@ -119,6 +119,9 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [upvoting, setUpvoting] = useState<number | null>(null);
   const [apiStatus, setApiStatus] = useState<{perplexity: string, openai: string, supabase: string} | null>(null);
+  const [newDealsCount, setNewDealsCount] = useState<number>(0);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [isPolling, setIsPolling] = useState<boolean>(true);
 
   // Load all deals and check API status on component mount
   useEffect(() => {
@@ -127,10 +130,90 @@ export default function Home() {
     checkApiStatus();
   }, []);
 
+  // Auto-refresh deals every 30 seconds
+  useEffect(() => {
+    if (!isPolling) return;
+
+    const interval = setInterval(async () => {
+      try {
+        await refreshDealsQuietly();
+      } catch (error) {
+        console.error('Error in auto-refresh:', error);
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [selectedDateRange, isPolling]);
+
   // Filter deals when filters change
   useEffect(() => {
     filterDeals();
   }, [deals, selectedCategory, selectedRegion]);
+
+  // Clear new deals notification after 5 seconds
+  useEffect(() => {
+    if (newDealsCount > 0) {
+      const timer = setTimeout(() => {
+        setNewDealsCount(0);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [newDealsCount]);
+
+  const refreshDealsQuietly = async () => {
+    try {
+      const response = await fetch('/api/deals/all');
+      const data = await response.json();
+      const allDeals = data.deals || [];
+      
+      // Filter by date range
+      const now = new Date();
+      let filteredByDate = allDeals;
+      
+      switch (selectedDateRange) {
+        case 'today':
+          filteredByDate = allDeals.filter((deal: Deal) => isToday(new Date(deal.date)));
+          break;
+        case 'yesterday':
+          filteredByDate = allDeals.filter((deal: Deal) => isYesterday(new Date(deal.date)));
+          break;
+        case '2days':
+          const twoDaysAgo = new Date();
+          twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+          filteredByDate = allDeals.filter((deal: Deal) => new Date(deal.date) >= twoDaysAgo);
+          break;
+        case 'week':
+          filteredByDate = allDeals.filter((deal: Deal) => isThisWeek(new Date(deal.date)));
+          break;
+        case 'lastweek':
+          const weekAgo = new Date();
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          filteredByDate = allDeals.filter((deal: Deal) => new Date(deal.date) >= weekAgo);
+          break;
+        case 'all':
+        default:
+          filteredByDate = allDeals.slice(0, 100);
+          break;
+      }
+      
+      // Remove duplicates and sort
+      const uniqueDeals = removeDuplicatesAggressive(filteredByDate);
+      const sortedDeals = uniqueDeals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      // Check for new deals
+      const currentDealsCount = deals.length;
+      const newDealsCount = sortedDeals.length - currentDealsCount;
+      
+      if (newDealsCount > 0) {
+        setNewDealsCount(newDealsCount);
+        setLastRefresh(new Date());
+      }
+      
+      setDeals(sortedDeals);
+    } catch (error) {
+      console.error('Error in quiet refresh:', error);
+    }
+  };
 
   const checkApiStatus = async () => {
     try {
@@ -324,6 +407,60 @@ export default function Home() {
     <div className="min-h-screen bg-white">
       <div className="apple-container">
         
+        {/* New Deals Notification */}
+        {newDealsCount > 0 && (
+          <div className="fixed top-4 right-4 z-50 animate-pulse">
+            <div className="apple-card p-4 bg-green-50 border-green-200 shadow-lg">
+              <div className="flex items-center space-x-3">
+                <div className="text-green-600">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-green-800">
+                    {newDealsCount} new deal{newDealsCount > 1 ? 's' : ''} added!
+                  </p>
+                  <p className="text-xs text-green-600">
+                    Updated {format(lastRefresh, 'h:mm:ss a')}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Auto-refresh Status */}
+        <div className="fixed bottom-4 right-4 z-40">
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setIsPolling(!isPolling)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isPolling 
+                  ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${isPolling ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
+                <span>{isPolling ? 'Auto-refresh ON' : 'Auto-refresh OFF'}</span>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => handleDateRangeChange(selectedDateRange)}
+              className="px-3 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition-colors"
+            >
+              <div className="flex items-center space-x-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Refresh Now</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
         {/* API Configuration Warning */}
         {(apiStatus?.perplexity === 'missing' || apiStatus?.openai === 'missing' || apiStatus?.supabase === 'missing') && (
           <div className="apple-space-md">
@@ -395,6 +532,7 @@ export default function Home() {
                  selectedDateRange === 'week' ? 'Showing articles from this week' :
                  selectedDateRange === 'lastweek' ? 'Showing articles from last week' :
                  'Showing filtered articles'}
+                 {isPolling && <span className="ml-2 text-green-600">• Live updates enabled</span>}
               </p>
             </div>
             
