@@ -409,9 +409,9 @@ CREATE POLICY "Anyone can insert votes" ON votes
     const { data, error } = await this.supabase
       .from('deals')
       .select('*')
-      .order('upvotes', { ascending: false })
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: false });
+      .order('date', { ascending: false })        // 1st priority: newest date
+      .order('upvotes', { ascending: false })     // 2nd priority: highest upvotes  
+      .order('created_at', { ascending: false }); // 3rd priority: newest created_at
 
     if (error) {
       console.error('❌ Failed to get all deals:', error);
