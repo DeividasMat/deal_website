@@ -406,6 +406,8 @@ CREATE POLICY "Anyone can insert votes" ON votes
   async getAllDeals(): Promise<Deal[]> {
     await this.ensureInitialized();
     
+    console.log('🔍 DEBUG: Executing getAllDeals with order: date DESC, upvotes DESC');
+    
     const { data, error } = await this.supabase
       .from('deals')
       .select('*')
@@ -418,8 +420,11 @@ CREATE POLICY "Anyone can insert votes" ON votes
       throw new Error(`Failed to get all deals: ${error.message}`);
     }
 
-    console.log(`📊 Retrieved ${data?.length || 0} total deals from Supabase`);
-    return data || [];
+    const sortedData = data || [];
+    console.log(`📊 Retrieved ${sortedData.length} deals from Supabase`);
+    console.log(`🎯 First 3 deals: ${sortedData.slice(0, 3).map(d => `${d.id}:${d.date}`).join(', ')}`);
+    
+    return sortedData;
   }
 
   async searchDealsByTitle(title: string): Promise<Deal[]> {
@@ -567,8 +572,7 @@ CREATE POLICY "Anyone can insert votes" ON votes
 let dbInstance: SupabaseDatabase | null = null;
 
 export function getSupabaseDatabase(): SupabaseDatabase {
-  if (!dbInstance) {
-    dbInstance = new SupabaseDatabase();
-  }
+  // Force fresh instance to pick up code changes
+  dbInstance = new SupabaseDatabase();
   return dbInstance;
 } 
