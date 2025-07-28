@@ -2,15 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { OpenAI } from 'openai';
 
-// Initialize clients
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Initialize clients inside functions to avoid build-time errors
+function getSupabaseClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+function getOpenAIClient() {
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY!,
+  });
+}
 
 // Safety configuration - NEVER allow deletion
 const SAFETY_CONFIG = {
@@ -32,6 +36,8 @@ interface DuplicateAnalysis {
 // Analyze two articles for similarity using OpenAI
 async function analyzeArticleSimilarity(article1: any, article2: any): Promise<DuplicateAnalysis | null> {
   try {
+    const openai = getOpenAIClient();
+    
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
@@ -110,6 +116,8 @@ Provide detailed duplicate analysis.`
 // Store duplicate analysis result (SAFE - only writes to analysis table)
 async function storeDuplicateAnalysis(article1: any, article2: any, analysis: DuplicateAnalysis): Promise<boolean> {
   try {
+    const supabase = getSupabaseClient();
+    
     const { data, error } = await supabase
       .from('duplicate_analysis')
       .insert({
@@ -153,6 +161,8 @@ export async function POST(request: NextRequest) {
     
     // Read articles from deals table (READ-ONLY)
     console.log(`📖 Reading ${limit} articles from deals table (READ-ONLY)...`);
+    
+    const supabase = getSupabaseClient();
     
     const { data: articles, error } = await supabase
       .from('deals')
@@ -248,6 +258,8 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = getSupabaseClient();
+    
     // Get analysis results from database
     const { data: results, error } = await supabase
       .from('duplicate_analysis_with_details')
