@@ -38,8 +38,22 @@ class SupabaseDatabase {
       throw new Error('Missing Supabase environment variables. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your .env file');
     }
     
-    this.supabase = createClient(supabaseUrl, supabaseKey);
-    console.log('🔗 Supabase client created successfully');
+    // Create Supabase client with cache-busting configuration
+    this.supabase = createClient(supabaseUrl, supabaseKey, {
+      db: {
+        schema: 'public'
+      },
+      realtime: {
+        params: {
+          eventsPerSecond: 10
+        }
+      },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true
+      }
+    });
+    console.log('🔗 Supabase client created successfully with optimized configuration');
   }
 
   private async initialize(): Promise<void> {

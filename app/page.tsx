@@ -122,6 +122,7 @@ export default function Home() {
   const [newDealsCount, setNewDealsCount] = useState<number>(0);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [isPolling, setIsPolling] = useState<boolean>(true);
+  const [isManualRefreshing, setIsManualRefreshing] = useState<boolean>(false);
 
   // Load all deals and check API status on component mount
   useEffect(() => {
@@ -130,19 +131,25 @@ export default function Home() {
     checkApiStatus();
   }, []);
 
-  // Auto-refresh deals every 30 seconds
+  // Auto-refresh deals every 15 seconds (reduced from 30)
   useEffect(() => {
     if (!isPolling) return;
 
+    console.log(`🔄 Auto-refresh enabled for range '${selectedDateRange}' - checking every 15 seconds`);
+    
     const interval = setInterval(async () => {
       try {
+        console.log(`⏰ Auto-refresh triggered at ${new Date().toISOString()}`);
         await refreshDealsQuietly();
       } catch (error) {
-        console.error('Error in auto-refresh:', error);
+        console.error('❌ Error in auto-refresh:', error);
       }
-    }, 30000); // 30 seconds
+    }, 15000); // 15 seconds (reduced from 30)
 
-    return () => clearInterval(interval);
+    return () => {
+      console.log('🛑 Auto-refresh interval cleared');
+      clearInterval(interval);
+    };
   }, [selectedDateRange, isPolling]);
 
   // Filter deals when filters change
@@ -162,9 +169,30 @@ export default function Home() {
 
   const refreshDealsQuietly = async () => {
     try {
-      const response = await fetch('/api/deals/all');
+      // Add cache busting with timestamp
+      const timestamp = Date.now();
+      const url = `/api/deals/all?t=${timestamp}&cb=${Math.random()}`;
+      
+      console.log(`🔄 Frontend: Refreshing deals at ${new Date().toISOString()}`);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
       const allDeals = data.deals || [];
+      
+      console.log(`📊 Frontend: Received ${allDeals.length} deals from API`);
+      console.log(`🎯 Latest deal: ${allDeals.length > 0 ? `${allDeals[0]?.title?.substring(0, 50)}... (${allDeals[0]?.date})` : 'No deals'}`);
       
       // Filter by date range
       const now = new Date();
@@ -196,22 +224,26 @@ export default function Home() {
           break;
       }
       
+      console.log(`🔽 Frontend: Filtered to ${filteredByDate.length} deals for range '${selectedDateRange}'`);
+      
       // Remove duplicates and sort
       const uniqueDeals = removeDuplicatesAggressive(filteredByDate);
       const sortedDeals = uniqueDeals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       
       // Check for new deals
       const currentDealsCount = deals.length;
-      const newDealsCount = sortedDeals.length - currentDealsCount;
+      const newDealsFoundCount = sortedDeals.length - currentDealsCount;
       
-      if (newDealsCount > 0) {
-        setNewDealsCount(newDealsCount);
+      if (newDealsFoundCount > 0) {
+        console.log(`🎉 Found ${newDealsFoundCount} new deals!`);
+        setNewDealsCount(newDealsFoundCount);
         setLastRefresh(new Date());
       }
       
       setDeals(sortedDeals);
+      console.log(`✅ Frontend: Updated state with ${sortedDeals.length} deals`);
     } catch (error) {
-      console.error('Error in quiet refresh:', error);
+      console.error('❌ Error in quiet refresh:', error);
     }
   };
 
@@ -238,19 +270,41 @@ export default function Home() {
   const loadAllDeals = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/deals/all');
+      // Add cache busting with timestamp
+      const timestamp = Date.now();
+      const url = `/api/deals/all?t=${timestamp}&cb=${Math.random()}`;
+      
+      console.log(`🔄 Frontend: Loading all deals at ${new Date().toISOString()}`);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
       
       // Get all deals without date filtering
       const allDeals = data.deals || [];
+      
+      console.log(`📊 Frontend: Loaded ${allDeals.length} deals from API`);
+      console.log(`🎯 Latest deal: ${allDeals.length > 0 ? `${allDeals[0]?.title?.substring(0, 50)}... (${allDeals[0]?.date})` : 'No deals'}`);
       
       // Remove duplicates and sort by date (newest first)
       const uniqueDeals = removeDuplicatesAggressive(allDeals);
       const sortedDeals = uniqueDeals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       
       setDeals(sortedDeals);
+      console.log(`✅ Frontend: Set ${sortedDeals.length} deals in state`);
     } catch (error) {
-      console.error('Error loading all deals:', error);
+      console.error('❌ Error loading all deals:', error);
       setDeals([]);
     } finally {
       setLoading(false);
@@ -448,14 +502,35 @@ export default function Home() {
             </button>
             
             <button
-              onClick={() => handleDateRangeChange(selectedDateRange)}
-              className="px-3 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition-colors"
+              onClick={async () => {
+                setIsManualRefreshing(true);
+                console.log('🔄 Manual refresh triggered by user');
+                try {
+                  await refreshDealsQuietly();
+                  console.log('✅ Manual refresh completed successfully');
+                } catch (error) {
+                  console.error('❌ Manual refresh failed:', error);
+                } finally {
+                  setIsManualRefreshing(false);
+                }
+              }}
+              disabled={isManualRefreshing}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isManualRefreshing 
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                  : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+              }`}
             >
               <div className="flex items-center space-x-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg 
+                  className={`w-4 h-4 ${isManualRefreshing ? 'animate-spin' : ''}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span>Refresh Now</span>
+                <span>{isManualRefreshing ? 'Refreshing...' : 'Refresh Now'}</span>
               </div>
             </button>
           </div>
