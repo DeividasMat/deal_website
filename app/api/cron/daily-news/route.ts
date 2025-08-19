@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getScheduler } from '@/lib/scheduler';
 import { format } from 'date-fns';
 
+// Force dynamic rendering to prevent caching
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Global variable to track if cron is running (simple in-memory lock)
 let isRunning = false;
 let lastRunTime: Date | null = null;
@@ -52,18 +56,44 @@ export async function GET(request: NextRequest) {
       vercelUrl: vercelUrl?.substring(0, 20) + '...' 
     });
     
-    // Authentication check
-    if (hasSecret && !isVercel) {
+    // Authentication check for Vercel Cron Jobs
+    if (isVercel) {
+      // On Vercel, check for the authorization header that Vercel sends
+      const authHeader = request.headers.get('authorization');
+      
+      // If CRON_SECRET is set, verify it
+      if (hasSecret) {
+        if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+          console.log('❌ UNAUTHORIZED: Invalid or missing authorization header on Vercel');
+          console.log('❌ Expected: Bearer [CRON_SECRET]');
+          console.log('❌ Received:', authHeader?.substring(0, 20) + '...');
+          // For Vercel cron jobs, we need to be more lenient
+          // Check if this is coming from Vercel's cron system
+          const vercelCronHeader = request.headers.get('x-vercel-cron');
+          if (!vercelCronHeader) {
+            return NextResponse.json({ error: 'Unauthorized - Not from Vercel Cron' }, { status: 401 });
+          }
+          console.log('✅ Request from Vercel Cron system detected');
+        } else {
+          console.log('✅ Authorization verified via CRON_SECRET on Vercel');
+        }
+      } else {
+        // No CRON_SECRET set, just check if it's from Vercel cron
+        const vercelCronHeader = request.headers.get('x-vercel-cron');
+        if (vercelCronHeader) {
+          console.log('✅ Vercel Cron request detected (no CRON_SECRET set)');
+        } else {
+          console.log('⚠️ Request not from Vercel Cron system, but allowing (no CRON_SECRET)');
+        }
+      }
+    } else if (hasSecret) {
+      // Non-Vercel environment with CRON_SECRET
       const authHeader = request.headers.get('authorization');
       if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
         console.log('❌ UNAUTHORIZED: Invalid or missing authorization header');
-        console.log('❌ Expected: Bearer [CRON_SECRET]');
-        console.log('❌ Received:', authHeader?.substring(0, 20) + '...');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
       console.log('✅ Authorization verified via CRON_SECRET');
-    } else if (isVercel) {
-      console.log('✅ Vercel environment - using built-in authentication');
     } else {
       console.log('⚠️ No CRON_SECRET set - running without authorization');
     }
