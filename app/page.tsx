@@ -129,6 +129,7 @@ export default function Home() {
     handleDateRangeChange('all');
     loadAvailableDates();
     checkApiStatus();
+    checkAutoFetch(); // Trigger auto-fetch check
   }, []);
 
   // Auto-refresh deals every 15 seconds (reduced from 30)
@@ -141,6 +142,12 @@ export default function Home() {
       try {
         console.log(`⏰ Auto-refresh triggered at ${new Date().toISOString()}`);
         await refreshDealsQuietly();
+        
+        // Also check auto-fetch every 5 minutes
+        const now = Date.now();
+        if (now % (5 * 60 * 1000) < 15000) {
+          checkAutoFetch();
+        }
       } catch (error) {
         console.error('❌ Error in auto-refresh:', error);
       }
@@ -244,6 +251,25 @@ export default function Home() {
       console.log(`✅ Frontend: Updated state with ${sortedDeals.length} deals`);
     } catch (error) {
       console.error('❌ Error in quiet refresh:', error);
+    }
+  };
+
+  const checkAutoFetch = async () => {
+    try {
+      // Check if we should auto-fetch new data
+      const response = await fetch('/api/auto-fetch');
+      const data = await response.json();
+      console.log('🤖 Auto-fetch status:', data);
+      
+      if (data.status === 'fetching') {
+        console.log('📰 Background fetch initiated - new data coming soon');
+        // Wait a bit and refresh
+        setTimeout(() => {
+          refreshDealsQuietly();
+        }, 10000); // Refresh after 10 seconds
+      }
+    } catch (error) {
+      console.error('Auto-fetch check failed:', error);
     }
   };
 
