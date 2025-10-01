@@ -22,16 +22,29 @@ git commit -m "Add GitHub Actions for automatic daily news fetching"
 git push
 ```
 
-### Step 2: Add Vercel URL Secret (Optional)
+### Step 2: Add Vercel URL Secret (IMPORTANT)
 
-1. Go to your GitHub repository
-2. Click **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
-4. Add:
-   - **Name:** `VERCEL_URL`
-   - **Value:** `https://your-app.vercel.app` (your actual Vercel URL)
+**You need to set your correct Vercel production URL:**
 
-If you don't add this secret, it will use the default URL from the script.
+1. **Find your Vercel URL:**
+   - Go to your Vercel dashboard: https://vercel.com/dashboard
+   - Click on your project
+   - Copy your production URL (e.g., `https://deal-website.vercel.app`)
+   - Make sure it's the **production** URL, not preview
+
+2. **Add it as a GitHub Secret:**
+   - Go to your GitHub repository: https://github.com/DeividasMat/deal_website
+   - Click **Settings** → **Secrets and variables** → **Actions**
+   - Click **New repository secret**
+   - Add:
+     - **Name:** `VERCEL_URL`
+     - **Value:** Your production URL (e.g., `https://deal-website.vercel.app`)
+     - ⚠️ **Important:** Don't include trailing slash
+
+3. **Alternative - Update Workflow File Directly:**
+   - Edit `.github/workflows/daily-news-fetch.yml`
+   - Replace the default URL with your actual Vercel URL
+   - Line 28: `VERCEL_URL="https://YOUR-ACTUAL-URL.vercel.app"`
 
 ### Step 3: Verify It's Working
 
