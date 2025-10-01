@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getScheduler } from '@/lib/scheduler';
 import { format, subDays } from 'date-fns';
 
+// Force dynamic rendering to prevent caching
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function POST(request: NextRequest) {
   try {
     console.log('🔧 Manual trigger: Starting daily news collection...');
