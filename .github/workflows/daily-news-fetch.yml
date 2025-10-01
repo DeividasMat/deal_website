@@ -1,0 +1,62 @@
+name: Daily News Fetch
+
+on:
+  schedule:
+    # Run 3 times daily: 8 AM, 12 PM, 5 PM UTC
+    - cron: '0 8 * * *'   # 8:00 AM UTC (3:00 AM EST)
+    - cron: '0 12 * * *'  # 12:00 PM UTC (7:00 AM EST)
+    - cron: '0 17 * * *'  # 5:00 PM UTC (12:00 PM EST)
+  
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  fetch-news:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Fetch Today's News
+        run: |
+          echo "🚀 Starting daily news fetch at $(date)"
+          
+          # Get your Vercel deployment URL
+          VERCEL_URL="${{ secrets.VERCEL_URL }}"
+          
+          # If no secret is set, try to use the default
+          if [ -z "$VERCEL_URL" ]; then
+            echo "⚠️ VERCEL_URL secret not set, trying default pattern"
+            VERCEL_URL="https://deal-website-8qyb2ppej-deividasmats-projects.vercel.app"
+          fi
+          
+          echo "📡 Calling: $VERCEL_URL/api/cron/manual-trigger"
+          
+          # Trigger the manual fetch endpoint
+          response=$(curl -s -X POST "$VERCEL_URL/api/cron/manual-trigger" \
+            -H "Content-Type: application/json" \
+            -d '{"date": "today"}' \
+            -w "\nHTTP_STATUS:%{http_code}")
+          
+          # Extract status code
+          http_code=$(echo "$response" | grep "HTTP_STATUS:" | cut -d: -f2)
+          body=$(echo "$response" | grep -v "HTTP_STATUS:")
+          
+          echo "📊 Response:"
+          echo "$body" | jq '.' || echo "$body"
+          
+          if [ "$http_code" = "200" ]; then
+            echo "✅ News fetch completed successfully!"
+          else
+            echo "❌ News fetch failed with status: $http_code"
+            exit 1
+          fi
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Daily News Fetch Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Time:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "News articles have been fetched and stored in Supabase database." >> $GITHUB_STEP_SUMMARY
+
