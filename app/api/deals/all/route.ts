@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/database';
 
+// Force dynamic rendering - CRITICAL for showing fresh data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   try {
     const db = getDatabase();
