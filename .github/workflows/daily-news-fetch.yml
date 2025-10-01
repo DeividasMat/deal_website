@@ -22,10 +22,10 @@ jobs:
           # Get your Vercel deployment URL
           VERCEL_URL="${{ secrets.VERCEL_URL }}"
           
-          # If no secret is set, try to use the default
+          # If no secret is set, use the production domain
           if [ -z "$VERCEL_URL" ]; then
-            echo "⚠️ VERCEL_URL secret not set, trying default pattern"
-            VERCEL_URL="https://deal-website-8qyb2ppej-deividasmats-projects.vercel.app"
+            echo "⚠️ VERCEL_URL secret not set, using production domain"
+            VERCEL_URL="https://privatecreditpulse.net"
           fi
           
           # Remove trailing slash if present
