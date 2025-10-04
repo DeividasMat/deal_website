@@ -129,7 +129,6 @@ export default function Home() {
     handleDateRangeChange('all');
     loadAvailableDates();
     checkApiStatus();
-    checkAutoFetch(); // Trigger auto-fetch check
   }, []);
 
   // Auto-refresh deals every 15 seconds (reduced from 30)
@@ -142,12 +141,6 @@ export default function Home() {
       try {
         console.log(`⏰ Auto-refresh triggered at ${new Date().toISOString()}`);
         await refreshDealsQuietly();
-        
-        // Also check auto-fetch every 5 minutes
-        const now = Date.now();
-        if (now % (5 * 60 * 1000) < 15000) {
-          checkAutoFetch();
-        }
       } catch (error) {
         console.error('❌ Error in auto-refresh:', error);
       }
@@ -181,6 +174,8 @@ export default function Home() {
       const url = `/api/deals/all?t=${timestamp}&cb=${Math.random()}`;
       
       console.log(`🔄 Frontend: Refreshing deals at ${new Date().toISOString()}`);
+      console.log(`🔍 Current selectedDateRange: ${selectedDateRange}`);
+      console.log(`🔍 Current deals count before refresh: ${deals.length}`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -208,26 +203,32 @@ export default function Home() {
       switch (selectedDateRange) {
         case 'today':
           filteredByDate = allDeals.filter((deal: Deal) => isToday(new Date(deal.date)));
+          console.log(`📅 Filtered for TODAY: ${filteredByDate.length} deals`);
           break;
         case 'yesterday':
           filteredByDate = allDeals.filter((deal: Deal) => isYesterday(new Date(deal.date)));
+          console.log(`📅 Filtered for YESTERDAY: ${filteredByDate.length} deals`);
           break;
         case '2days':
           const twoDaysAgo = new Date();
           twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
           filteredByDate = allDeals.filter((deal: Deal) => new Date(deal.date) >= twoDaysAgo);
+          console.log(`📅 Filtered for LAST 2 DAYS: ${filteredByDate.length} deals`);
           break;
         case 'week':
           filteredByDate = allDeals.filter((deal: Deal) => isThisWeek(new Date(deal.date)));
+          console.log(`📅 Filtered for THIS WEEK: ${filteredByDate.length} deals`);
           break;
         case 'lastweek':
           const weekAgo = new Date();
           weekAgo.setDate(weekAgo.getDate() - 7);
           filteredByDate = allDeals.filter((deal: Deal) => new Date(deal.date) >= weekAgo);
+          console.log(`📅 Filtered for LAST WEEK: ${filteredByDate.length} deals`);
           break;
         case 'all':
         default:
           filteredByDate = allDeals.slice(0, 100);
+          console.log(`📅 Filtered for ALL (top 100): ${filteredByDate.length} deals`);
           break;
       }
       
@@ -237,39 +238,27 @@ export default function Home() {
       const uniqueDeals = removeDuplicatesAggressive(filteredByDate);
       const sortedDeals = uniqueDeals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       
-      // Check for new deals
-      const currentDealsCount = deals.length;
-      const newDealsFoundCount = sortedDeals.length - currentDealsCount;
+      console.log(`🧹 After deduplication: ${sortedDeals.length} unique deals`);
+      console.log(`📋 Setting state with ${sortedDeals.length} deals...`);
       
-      if (newDealsFoundCount > 0) {
-        console.log(`🎉 Found ${newDealsFoundCount} new deals!`);
-        setNewDealsCount(newDealsFoundCount);
-        setLastRefresh(new Date());
+      // Always update deals and show notification
+      const previousCount = deals.length;
+      setDeals(sortedDeals);
+      setLastRefresh(new Date());
+      
+      // Show notification if count changed
+      const diff = sortedDeals.length - previousCount;
+      if (diff !== 0) {
+        console.log(`🎉 Deal count changed by ${diff}!`);
+        setNewDealsCount(Math.abs(diff));
+      } else {
+        console.log(`ℹ️  Deal count unchanged: ${sortedDeals.length} deals`);
       }
       
-      setDeals(sortedDeals);
-      console.log(`✅ Frontend: Updated state with ${sortedDeals.length} deals`);
+      console.log(`✅ Frontend: State update completed with ${sortedDeals.length} deals`);
     } catch (error) {
       console.error('❌ Error in quiet refresh:', error);
-    }
-  };
-
-  const checkAutoFetch = async () => {
-    try {
-      // Check if we should auto-fetch new data
-      const response = await fetch('/api/auto-fetch');
-      const data = await response.json();
-      console.log('🤖 Auto-fetch status:', data);
-      
-      if (data.status === 'fetching') {
-        console.log('📰 Background fetch initiated - new data coming soon');
-        // Wait a bit and refresh
-        setTimeout(() => {
-          refreshDealsQuietly();
-        }, 10000); // Refresh after 10 seconds
-      }
-    } catch (error) {
-      console.error('Auto-fetch check failed:', error);
+      console.error('Error details:', error);
     }
   };
 
